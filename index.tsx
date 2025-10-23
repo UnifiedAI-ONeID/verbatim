@@ -39,11 +39,11 @@ const translations = {
         dateLabel: 'Date:',
         timeLabel: 'Time:',
         openInCalendar: 'Open in Google Calendar',
-        draftEmail: 'Draft Email in Gmail',
+        draftEmail: 'Draft Email',
         toLabel: 'To:',
         subjectLabel: 'Subject:',
         bodyLabel: 'Body:',
-        openInGmail: 'Open in Gmail',
+        openInEmailApp: 'Open in Email App',
         initiatePhoneCall: 'Initiate Phone Call',
         phoneNumberLabel: 'Phone Number:',
         reasonLabel: 'Reason:',
@@ -126,11 +126,11 @@ const translations = {
         dateLabel: 'Fecha:',
         timeLabel: 'Hora:',
         openInCalendar: 'Abrir en Google Calendar',
-        draftEmail: 'Redactar Correo en Gmail',
+        draftEmail: 'Redactar Correo',
         toLabel: 'Para:',
         subjectLabel: 'Asunto:',
         bodyLabel: 'Cuerpo:',
-        openInGmail: 'Abrir en Gmail',
+        openInEmailApp: 'Abrir en Correo',
         initiatePhoneCall: 'Iniciar Llamada',
         phoneNumberLabel: 'Número de Teléfono:',
         reasonLabel: 'Motivo:',
@@ -213,11 +213,11 @@ const translations = {
         dateLabel: '日期:',
         timeLabel: '时间:',
         openInCalendar: '在谷歌日历中打开',
-        draftEmail: '在 Gmail 中草拟邮件',
+        draftEmail: '草拟邮件',
         toLabel: '收件人:',
         subjectLabel: '主题:',
         bodyLabel: '正文:',
-        openInGmail: '在 Gmail 中打开',
+        openInEmailApp: '在邮件应用中打开',
         initiatePhoneCall: '拨打电话',
         phoneNumberLabel: '电话号码:',
         reasonLabel: '呼叫原因:',
@@ -300,11 +300,11 @@ const translations = {
         dateLabel: '日期:',
         timeLabel: '時間:',
         openInCalendar: '在 Google 日曆中開啟',
-        draftEmail: '在 Gmail 中草擬郵件',
+        draftEmail: '草擬郵件',
         toLabel: '收件人:',
         subjectLabel: '主旨:',
         bodyLabel: '內文:',
-        openInGmail: '在 Gmail 中開啟',
+        openInEmailApp: '在郵件應用程式中開啟',
         initiatePhoneCall: '撥打電話',
         phoneNumberLabel: '電話號碼:',
         reasonLabel: '通話事由:',
@@ -435,7 +435,7 @@ const createCalendarEventTool: FunctionDeclaration = {
 
 const draftEmailTool: FunctionDeclaration = {
   name: 'draft_email',
-  description: 'Drafts an email in Gmail with the specified recipients, subject, and body.',
+  description: 'Drafts an email with the specified recipients, subject, and body using the default email client.',
   parameters: {
     type: Type.OBJECT,
     properties: {
@@ -1118,7 +1118,7 @@ ${results.transcript}
                         </>
                     );
                 case 'draft_email':
-                    const gmailUrl = `https://mail.google.com/mail/?view=cm&fs=1&to=${encodeURIComponent(args.to)}&su=${encodeURIComponent(args.subject)}&body=${encodeURIComponent(args.body)}`;
+                    const mailtoUrl = `mailto:${encodeURIComponent(args.to || '')}?subject=${encodeURIComponent(args.subject || '')}&body=${encodeURIComponent(args.body || '')}`;
                     return (
                         <>
                             <h3>{t.draftEmail}</h3>
@@ -1126,8 +1126,8 @@ ${results.transcript}
                             <p><strong>{t.subjectLabel}</strong> {args.subject}</p>
                             <p><strong>{t.bodyLabel}</strong></p>
                             <pre style={styles.modalPre}>{args.body}</pre>
-                            <a href={gmailUrl} target="_blank" rel="noopener noreferrer" className="action-button">
-                                {t.openInGmail}
+                            <a href={mailtoUrl} className="action-button">
+                                {t.openInEmailApp}
                             </a>
                         </>
                     );
