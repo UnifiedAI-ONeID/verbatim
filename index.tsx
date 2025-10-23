@@ -44,6 +44,10 @@ const translations = {
         subjectLabel: 'Subject:',
         bodyLabel: 'Body:',
         openInGmail: 'Open in Gmail',
+        initiatePhoneCall: 'Initiate Phone Call',
+        phoneNumberLabel: 'Phone Number:',
+        reasonLabel: 'Reason:',
+        callNow: 'Call Now',
         createDocument: 'Create Google Doc',
         createDocInfo: 'A new tab will open to create a Google Doc. The content below will be copied to your clipboard to paste.',
         suggestedTitle: 'Suggested Title:',
@@ -127,6 +131,10 @@ const translations = {
         subjectLabel: 'Asunto:',
         bodyLabel: 'Cuerpo:',
         openInGmail: 'Abrir en Gmail',
+        initiatePhoneCall: 'Iniciar Llamada',
+        phoneNumberLabel: 'Número de Teléfono:',
+        reasonLabel: 'Motivo:',
+        callNow: 'Llamar Ahora',
         createDocument: 'Crear Google Doc',
         createDocInfo: 'Se abrirá una nueva pestaña para crear un Google Doc. El contenido de abajo se copiará a tu portapapeles para que lo pegues.',
         suggestedTitle: 'Título Sugerido:',
@@ -210,6 +218,10 @@ const translations = {
         subjectLabel: '主题:',
         bodyLabel: '正文:',
         openInGmail: '在 Gmail 中打开',
+        initiatePhoneCall: '拨打电话',
+        phoneNumberLabel: '电话号码:',
+        reasonLabel: '呼叫原因:',
+        callNow: '立即呼叫',
         createDocument: '创建谷歌文档',
         createDocInfo: '将打开一个新标签页来创建谷歌文档。下面的内容将被复制到您的剪贴板以便粘贴。',
         suggestedTitle: '建议标题:',
@@ -293,6 +305,10 @@ const translations = {
         subjectLabel: '主旨:',
         bodyLabel: '內文:',
         openInGmail: '在 Gmail 中開啟',
+        initiatePhoneCall: '撥打電話',
+        phoneNumberLabel: '電話號碼:',
+        reasonLabel: '通話事由:',
+        callNow: '立即通話',
         createDocument: '建立 Google 文件',
         createDocInfo: '將會開啟一個新分頁來建立 Google 文件。下面的內容將被複製到您的剪貼簿以便貼上。',
         suggestedTitle: '建議標題:',
@@ -441,6 +457,19 @@ const createDocumentTool: FunctionDeclaration = {
       content: { type: Type.STRING, description: 'The suggested content for the document body.' },
     },
     required: ['title', 'content'],
+  },
+};
+
+const initiatePhoneCallTool: FunctionDeclaration = {
+  name: 'initiate_phone_call',
+  description: 'Initiates a phone call to a specified number for a given reason. Use this for actions like "call someone".',
+  parameters: {
+    type: Type.OBJECT,
+    properties: {
+      phoneNumber: { type: Type.STRING, description: 'The phone number to call, including country and area codes if available.' },
+      reason: { type: Type.STRING, description: 'A brief reason for the phone call, based on the meeting context.' },
+    },
+    required: ['phoneNumber', 'reason'],
   },
 };
 
@@ -863,7 +892,7 @@ const App: React.FC = () => {
                 model: 'gemini-2.5-flash',
                 contents: promptText,
                 config: {
-                    tools: [{ functionDeclarations: [createCalendarEventTool, draftEmailTool, createDocumentTool] }],
+                    tools: [{ functionDeclarations: [createCalendarEventTool, draftEmailTool, createDocumentTool, initiatePhoneCallTool] }],
                 },
             });
             
@@ -1099,6 +1128,18 @@ ${results.transcript}
                             <pre style={styles.modalPre}>{args.body}</pre>
                             <a href={gmailUrl} target="_blank" rel="noopener noreferrer" className="action-button">
                                 {t.openInGmail}
+                            </a>
+                        </>
+                    );
+                case 'initiate_phone_call':
+                    const telUrl = `tel:${args.phoneNumber.replace(/[^0-9+]/g, '')}`;
+                    return (
+                        <>
+                            <h3>{t.initiatePhoneCall}</h3>
+                            <p><strong>{t.phoneNumberLabel}</strong> {args.phoneNumber}</p>
+                            <p><strong>{t.reasonLabel}</strong> {args.reason || sourceItem}</p>
+                            <a href={telUrl} className="action-button">
+                                {t.callNow}
                             </a>
                         </>
                     );
