@@ -78,6 +78,8 @@ const translations = {
         selectAudioDeviceInstruction: 'Choose the microphone you want to use for the recording.',
         start: 'Start',
         cancel: 'Cancel',
+        analysisPrompt: 'You are an expert multilingual meeting assistant. The user\'s preferred language is English. Analyze the following meeting audio, which may contain multiple spoken languages. Your task is to process this multilingual audio and generate all output exclusively in English. Provide a concise summary, a list of action items, and a full transcript with speaker labels (e.g., Speaker 1, Speaker 2). Identify all unique speakers. All output text (summary, action items, transcript) MUST be translated to and written in English. Format the output as a JSON object with keys: "summary", "actionItems" (an array of strings), "transcript" (a string with newlines and speaker labels), and "speakers" (an array of identified speaker labels like ["Speaker 1", "Speaker 2"]). Do not include the JSON markdown wrapper.',
+        actionPrompt: 'Based on the following action item, call the most appropriate tool to help the user complete it. The user\'s language is English. Action item: "{actionItemText}"',
     },
     es: {
         title: 'Verbatim',
@@ -139,6 +141,8 @@ const translations = {
         selectAudioDeviceInstruction: 'Elige el micrófono que deseas utilizar para la grabación.',
         start: 'Comenzar',
         cancel: 'Cancelar',
+        analysisPrompt: 'Eres un experto asistente de reuniones multilingüe. El idioma preferido del usuario es español. Analiza el siguiente audio de la reunión, que puede contener varios idiomas hablados. Tu tarea es procesar este audio multilingüe y generar todo el resultado exclusivamente en español. Proporciona un resumen conciso, una lista de puntos de acción y una transcripción completa con etiquetas de orador (p. ej., Orador 1, Orador 2). Identifica a todos los oradores únicos. Todo el texto de salida (resumen, puntos de acción, transcripción) DEBE ser traducido y escrito en español. Formatea la salida como un objeto JSON con las claves: "summary", "actionItems" (un array de strings), "transcript" (un string con saltos de línea y etiquetas de orador), y "speakers" (un array de etiquetas de orador identificadas como ["Orador 1", "Orador 2"]). No incluyas el envoltorio de markdown para JSON.',
+        actionPrompt: 'Basado en el siguiente punto de acción, llama a la herramienta más apropiada para ayudar al usuario a completarlo. El idioma del usuario es español. Punto de acción: "{actionItemText}"',
     },
     'zh-CN': {
         title: 'Verbatim',
@@ -200,6 +204,8 @@ const translations = {
         selectAudioDeviceInstruction: '请选择您要用于录音的麦克风。',
         start: '开始',
         cancel: '取消',
+        analysisPrompt: '你是一位专业的多语言会议助理。用户的首选语言是简体中文。请分析接下来的会议音频，其中可能包含多种口语语言。你的任务是处理这段多语言音频，并完全以简体中文生成所有输出。提供一份简洁的摘要、一个行动项列表和一份带有发言人标签（例如，发言人 1，发言人 2）的完整文字记录。识别所有唯一的发言人。所有输出文本（摘要、行动项、文字记录）都必须翻译成并以简体中文书写。将输出格式化为 JSON 对象，包含以下键："summary"、"actionItems"（字符串数组）、"transcript"（包含换行符和发言人标签的字符串）和 "speakers"（已识别的发言人标签数组，如 ["发言人 1", "发言人 2"]）。不要包含 JSON 的 markdown 包装器。',
+        actionPrompt: '根据以下行动项，调用最合适的工具来帮助用户完成它。用户的语言是简体中文。行动项："{actionItemText}"',
     },
     'zh-TW': {
         title: 'Verbatim',
@@ -261,6 +267,8 @@ const translations = {
         selectAudioDeviceInstruction: '請選擇您要用於錄音的麥克風。',
         start: '開始',
         cancel: '取消',
+        analysisPrompt: '你是一位專業的多語言會議助理。使用者的首選語言是繁體中文。請分析接下來的會議音訊，其中可能包含多種口語語言。你的任務是處理這段多語言音訊，並完全以繁體中文生成所有輸出。提供一份簡潔的摘要、一個行動項目清單、一份帶有發言人標籤（例如，發言人 1，發言人 2）的完整文字記錄，並識別所有唯一的發言人。所有輸出文字（摘要、行動項目、文字記錄）都必須翻譯成並以繁體中文書寫。將輸出格式化為 JSON 物件，包含以下鍵："summary"、"actionItems"（字串陣列）、"transcript"（包含換行符和發言人標籤的字串）和 "speakers"（已識別的發言人標籤陣列，如 ["發言人 1", "發言人 2"]）。不要包含 JSON 的 markdown 包裝器。',
+        actionPrompt: '根據以下行動項目，呼叫最合適的工具來幫助使用者完成它。使用者的語言是繁體中文。行動項目："{actionItemText}"',
     }
 };
 
@@ -490,7 +498,7 @@ const App: React.FC = () => {
             });
             const audioData = base64Audio.split(',')[1];
             
-             const systemInstruction = `You are a meeting assistant. Analyze the following meeting transcript. Provide a concise summary, a list of action items, a full transcript with speaker labels (e.g., Speaker 1, Speaker 2), and identify all unique speakers. Format the output as a JSON object with keys: "summary", "actionItems" (an array of strings), "transcript" (a string with newlines and speaker labels), and "speakers" (an array of identified speaker labels like ["Speaker 1", "Speaker 2"]). Do not include the JSON markdown wrapper.`;
+             const systemInstruction = t.analysisPrompt;
             
              const response = await ai.models.generateContent({
                  model: 'gemini-2.5-flash',
@@ -534,7 +542,7 @@ const App: React.FC = () => {
         } finally {
             setIsAnalyzing(false);
         }
-    }, [location, pipWindow, t.processingError, t.meetingTitle, t.locationUnavailable, t.noTranscript, t.noSummary]);
+    }, [location, pipWindow, t.processingError, t.meetingTitle, t.locationUnavailable, t.noTranscript, t.noSummary, t.analysisPrompt]);
 
      // --- PiP Communication ---
     useEffect(() => {
@@ -665,9 +673,10 @@ const App: React.FC = () => {
         setActionModalData(null);
         
         try {
+            const promptText = t.actionPrompt.replace('{actionItemText}', actionItemText);
             const response = await ai.models.generateContent({
                 model: 'gemini-2.5-flash',
-                contents: [{ parts: [{ text: `Based on the following action item, call the most appropriate tool to help the user complete it. Action item: "${actionItemText}"` }] }],
+                contents: [{ parts: [{ text: promptText }] }],
                 config: {
                     tools: [{ functionDeclarations: [createCalendarEventTool, draftEmailTool, createDocumentTool] }],
                 },
