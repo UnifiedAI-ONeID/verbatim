@@ -1,4 +1,3 @@
-
 import React, { useState, useRef, CSSProperties, useEffect, useCallback } from 'react';
 import { createRoot } from 'react-dom/client';
 import { GoogleGenAI, Type, FunctionDeclaration } from "@google/genai";
@@ -79,7 +78,23 @@ const translations = {
         start: 'Start',
         cancel: 'Cancel',
         analysisPrompt: 'You are an expert multilingual meeting assistant. The user\'s preferred language is English. Analyze the following meeting audio, which may contain multiple spoken languages. Your task is to process this multilingual audio and generate all output exclusively in English. Provide a concise summary, a list of action items, and a full transcript with speaker labels (e.g., Speaker 1, Speaker 2). Identify all unique speakers. All output text (summary, action items, transcript) MUST be translated to and written in English. Format the output as a JSON object with keys: "summary", "actionItems" (an array of strings), "transcript" (a string with newlines and speaker labels), and "speakers" (an array of identified speaker labels like ["Speaker 1", "Speaker 2"]). Do not include the JSON markdown wrapper.',
-        actionPrompt: 'Based on the following action item, call the most appropriate tool to help the user complete it. The user\'s language is English. Action item: "{actionItemText}"',
+        actionPrompt: 'You are an intelligent assistant. Based on the full context of a meeting and a specific action item, call the most appropriate tool to help the user complete it. The user\'s language is English. Meeting Title: "{meetingTitle}". Meeting Date: "{meetingDate}". Meeting Summary: "{meetingSummary}". Action Item: "{actionItemText}". Ensure all generated content like email subjects or event descriptions are relevant to the meeting context.',
+        featureShowcase: 'Verbatim Features',
+        createdBy: 'Created by',
+        creatorName: 'Simon Luke',
+        creatorEmail: 'simon.luke@impactoryinstitute.com',
+        featureList: [
+            'Multilingual AI Analysis',
+            'Automatic Summary & Action Items',
+            'Full Transcription with Speaker Labels',
+            'Hands-Free Driving Mode with Voice Commands',
+            'Pause/Resume Recording',
+            'One-Click Actions (Calendar, Gmail, Docs)',
+            'Markdown Export & Copy',
+            'Picture-in-Picture Mini View',
+            'Offline PWA Functionality',
+            'Audio Source Selection',
+        ],
     },
     es: {
         title: 'Verbatim',
@@ -95,7 +110,7 @@ const translations = {
         noTranscript: 'No se pudo extraer la transcripción.',
         noSummary: 'No se pudo extraer el resumen.',
         takeAction: 'Tomar Acción ✨',
-        noActionDetermined: 'No se pudo determinar una acción específica para este ítem. Puedes gestionarlo manualmente.',
+        noActionDetermined: 'No se pudo determinar una acción específica para este ítem. Puedes gestionarlo manually.',
         createCalendarEvent: 'Crear Evento en Google Calendar',
         titleLabel: 'Título:',
         descriptionLabel: 'Descripción:',
@@ -142,7 +157,23 @@ const translations = {
         start: 'Comenzar',
         cancel: 'Cancelar',
         analysisPrompt: 'Eres un experto asistente de reuniones multilingüe. El idioma preferido del usuario es español. Analiza el siguiente audio de la reunión, que puede contener varios idiomas hablados. Tu tarea es procesar este audio multilingüe y generar todo el resultado exclusivamente en español. Proporciona un resumen conciso, una lista de puntos de acción y una transcripción completa con etiquetas de orador (p. ej., Orador 1, Orador 2). Identifica a todos los oradores únicos. Todo el texto de salida (resumen, puntos de acción, transcripción) DEBE ser traducido y escrito en español. Formatea la salida como un objeto JSON con las claves: "summary", "actionItems" (un array de strings), "transcript" (un string con saltos de línea y etiquetas de orador), y "speakers" (un array de etiquetas de orador identificadas como ["Orador 1", "Orador 2"]). No incluyas el envoltorio de markdown para JSON.',
-        actionPrompt: 'Basado en el siguiente punto de acción, llama a la herramienta más apropiada para ayudar al usuario a completarlo. El idioma del usuario es español. Punto de acción: "{actionItemText}"',
+        actionPrompt: 'Eres un asistente inteligente. Basado en el contexto completo de una reunión y un punto de acción específico, llama a la herramienta más apropiada para ayudar al usuario a completarlo. El idioma del usuario es español. Título de la reunión: "{meetingTitle}". Fecha de la reunión: "{meetingDate}". Resumen de la reunión: "{meetingSummary}". Punto de acción: "{actionItemText}". Asegúrate de que todo el contenido generado, como asuntos de correo o descripciones de eventos, sea relevante para el contexto de la reunión.',
+        featureShowcase: 'Funcionalidades de Verbatim',
+        createdBy: 'Creado por',
+        creatorName: 'Simon Luke',
+        creatorEmail: 'simon.luke@impactoryinstitute.com',
+        featureList: [
+            'Análisis IA Multilingüe',
+            'Resumen y Acciones Automáticas',
+            'Transcripción Completa con Oradores',
+            'Modo Conducción Manos Libres con Voz',
+            'Pausar/Reanudar Grabación',
+            'Acciones en Un Clic (Calendar, Gmail, Docs)',
+            'Exportar y Copiar en Markdown',
+            'Mini Vista Picture-in-Picture',
+            'Funcionalidad PWA Offline',
+            'Selección de Fuente de Audio',
+        ],
     },
     'zh-CN': {
         title: 'Verbatim',
@@ -205,7 +236,23 @@ const translations = {
         start: '开始',
         cancel: '取消',
         analysisPrompt: '你是一位专业的多语言会议助理。用户的首选语言是简体中文。请分析接下来的会议音频，其中可能包含多种口语语言。你的任务是处理这段多语言音频，并完全以简体中文生成所有输出。提供一份简洁的摘要、一个行动项列表和一份带有发言人标签（例如，发言人 1，发言人 2）的完整文字记录。识别所有唯一的发言人。所有输出文本（摘要、行动项、文字记录）都必须翻译成并以简体中文书写。将输出格式化为 JSON 对象，包含以下键："summary"、"actionItems"（字符串数组）、"transcript"（包含换行符和发言人标签的字符串）和 "speakers"（已识别的发言人标签数组，如 ["发言人 1", "发言人 2"]）。不要包含 JSON 的 markdown 包装器。',
-        actionPrompt: '根据以下行动项，调用最合适的工具来帮助用户完成它。用户的语言是简体中文。行动项："{actionItemText}"',
+        actionPrompt: '你是一个智能助手。请根据会议的完整背景和一个具体的行动项，调用最合适的工具来帮助用户完成它。用户的语言是简体中文。会议标题：“{meetingTitle}”。会议日期：“{meetingDate}”。会议摘要：“{meetingSummary}”。行动项：“{actionItemText}”。确保所有生成的内容（如邮件主题或活动描述）都与会议背景相关。',
+        featureShowcase: 'Verbatim 功能特性',
+        createdBy: '创建者',
+        creatorName: 'Simon Luke',
+        creatorEmail: 'simon.luke@impactoryinstitute.com',
+        featureList: [
+            '多语言 AI 分析',
+            '自动生成摘要与行动项',
+            '带发言人标签的完整转录',
+            '语音控制免提驾驶模式',
+            '暂停/继续录音',
+            '一键操作 (日历, Gmail, 文档)',
+            'Markdown 导出与复制',
+            '画中画迷你视图',
+            '离线 PWA 功能',
+            '音频源选择',
+        ],
     },
     'zh-TW': {
         title: 'Verbatim',
@@ -268,7 +315,23 @@ const translations = {
         start: '開始',
         cancel: '取消',
         analysisPrompt: '你是一位專業的多語言會議助理。使用者的首選語言是繁體中文。請分析接下來的會議音訊，其中可能包含多種口語語言。你的任務是處理這段多語言音訊，並完全以繁體中文生成所有輸出。提供一份簡潔的摘要、一個行動項目清單、一份帶有發言人標籤（例如，發言人 1，發言人 2）的完整文字記錄，並識別所有唯一的發言人。所有輸出文字（摘要、行動項目、文字記錄）都必須翻譯成並以繁體中文書寫。將輸出格式化為 JSON 物件，包含以下鍵："summary"、"actionItems"（字串陣列）、"transcript"（包含換行符和發言人標籤的字串）和 "speakers"（已識別的發言人標籤陣列，如 ["發言人 1", "發言人 2"]）。不要包含 JSON 的 markdown 包裝器。',
-        actionPrompt: '根據以下行動項目，呼叫最合適的工具來幫助使用者完成它。使用者的語言是繁體中文。行動項目："{actionItemText}"',
+        actionPrompt: '你是一個智慧助理。請根據會議的完整背景和一個具體的行動項目，呼叫最合適的工具來幫助使用者完成它。使用者的語言是繁體中文。會議標題：「{meetingTitle}」。會議日期：「{meetingDate}」。會議摘要：「{meetingSummary}」。行動項目：「{actionItemText}」。確保所有生成的內容（如郵件主旨或活動描述）都與會議背景相關。',
+        featureShowcase: 'Verbatim 功能特性',
+        createdBy: '創建者',
+        creatorName: 'Simon Luke',
+        creatorEmail: 'simon.luke@impactoryinstitute.com',
+        featureList: [
+            '多語言 AI 分析',
+            '自動生成摘要與行動項目',
+            '帶發言人標籤的完整轉錄',
+            '語音控制免提駕駛模式',
+            '暫停/繼續錄音',
+            '一鍵操作 (日曆, Gmail, 文件)',
+            'Markdown 導出與複製',
+            '畫中畫迷你視圖',
+            '離線 PWA 功能',
+            '音訊源選擇',
+        ],
     }
 };
 
@@ -365,7 +428,8 @@ const App: React.FC = () => {
     const [showDeviceSelector, setShowDeviceSelector] = useState(false);
     const [audioDevices, setAudioDevices] = useState<MediaDeviceInfo[]>([]);
     const [selectedAudioDevice, setSelectedAudioDevice] = useState<string>('');
-
+    const [easterEggClicks, setEasterEggClicks] = useState(0);
+    const [showEasterEgg, setShowEasterEgg] = useState(false);
 
     // --- Refs ---
     const mediaRecorderRef = useRef<MediaRecorder | null>(null);
@@ -542,7 +606,7 @@ const App: React.FC = () => {
         } finally {
             setIsAnalyzing(false);
         }
-    }, [location, pipWindow, t.processingError, t.meetingTitle, t.locationUnavailable, t.noTranscript, t.noSummary, t.analysisPrompt]);
+    }, [location, pipWindow, t]);
 
      // --- PiP Communication ---
     useEffect(() => {
@@ -668,12 +732,22 @@ const App: React.FC = () => {
 
     // --- Action Handling ---
     const handleTakeAction = async (actionItemText: string) => {
+        if (!activeSession) return;
+        
         setLoadingActionItem(actionItemText);
         setActionError(null);
         setActionModalData(null);
         
         try {
-            const promptText = t.actionPrompt.replace('{actionItemText}', actionItemText);
+            const { title, date } = activeSession.metadata;
+            const { summary } = activeSession.results;
+            
+            const promptText = t.actionPrompt
+                .replace('{actionItemText}', actionItemText)
+                .replace('{meetingTitle}', title)
+                .replace('{meetingDate}', new Date(date).toLocaleDateString())
+                .replace('{meetingSummary}', summary);
+
             const response = await ai.models.generateContent({
                 model: 'gemini-2.5-flash',
                 contents: [{ parts: [{ text: promptText }] }],
@@ -706,7 +780,7 @@ const App: React.FC = () => {
         const { metadata, results, speakers } = activeSession;
         
         const speakerList = Object.entries(speakers)
-            .map(([id, name]) => `- ${id}: ${name}`)
+            .map(([id, name]) => `- ${name} (ID: ${id})`)
             .join('\n');
             
         const actionItemsList = results.actionItems
@@ -774,14 +848,16 @@ ${results.transcript}
         setActiveSession(session);
     };
     
-     const handleRenameSpeaker = (sessionId: string, oldName: string) => {
-        const newName = prompt(`${t.renameSpeakerPrompt} ${oldName}:`, oldName);
+     const handleRenameSpeaker = (sessionId: string, speakerId: string) => {
+        const currentName = sessions.find(s => s.id === sessionId)?.speakers[speakerId] || speakerId;
+        const newName = prompt(`${t.renameSpeakerPrompt} ${currentName}:`, currentName);
         if (newName && newName.trim() !== "") {
             const updatedSessions = sessions.map(session => {
                 if (session.id === sessionId) {
-                    const newSpeakers = { ...session.speakers, [oldName]: newName.trim() };
+                    const oldSpeakerName = session.speakers[speakerId];
+                    const newSpeakers = { ...session.speakers, [speakerId]: newName.trim() };
                     const newTranscript = session.results.transcript.replace(
-                        new RegExp(`^${oldName}:`, 'gm'), 
+                        new RegExp(`^${oldSpeakerName}:`, 'gm'), 
                         `${newName.trim()}:`
                     );
                     return { 
@@ -809,6 +885,22 @@ ${results.transcript}
                 setActiveSession(null);
             }
         }
+    };
+    
+    const handleTitleClick = () => {
+        const newClicks = easterEggClicks + 1;
+        setEasterEggClicks(newClicks);
+        
+        if (newClicks >= 5) {
+            setShowEasterEgg(true);
+            setEasterEggClicks(0);
+        }
+        
+        const timer = setTimeout(() => {
+            setEasterEggClicks(current => (current === newClicks ? 0 : current));
+        }, 1500);
+
+        return () => clearTimeout(timer);
     };
 
     const filteredSessions = sessions.filter(session =>
@@ -936,6 +1028,28 @@ ${results.transcript}
         );
     };
     
+    const renderEasterEggModal = () => {
+        if (!showEasterEgg) return null;
+        
+        const closeModal = () => setShowEasterEgg(false);
+        
+        return (
+            <div style={styles.modalBackdrop} onClick={closeModal}>
+                <div style={styles.modalContent} onClick={(e) => e.stopPropagation()}>
+                    <button style={styles.modalCloseButton} onClick={closeModal}>&times;</button>
+                    <h3 style={styles.easterEggTitle}>{t.featureShowcase}</h3>
+                    <ul style={styles.featureList}>
+                        {t.featureList.map((feature, index) => <li key={index}>{feature}</li>)}
+                    </ul>
+                    <div style={styles.creatorCredit}>
+                        <p><strong>{t.createdBy}:</strong> {t.creatorName}</p>
+                        <p><a href={`mailto:${t.creatorEmail}`}>{t.creatorEmail}</a></p>
+                    </div>
+                </div>
+            </div>
+        );
+    };
+    
     const renderControls = () => (
         <div style={styles.controls}>
              {isRecording ? (
@@ -988,6 +1102,7 @@ ${results.transcript}
             {filteredSessions.map(session => (
                 <div
                     key={session.id}
+                    className="session-card"
                     style={{
                         ...styles.sessionCard,
                         ...(activeSession?.id === session.id ? styles.activeSessionCard : {}),
@@ -1001,6 +1116,7 @@ ${results.transcript}
                     </div>
                     <button
                         style={styles.deleteButton}
+                        className="delete-button"
                         onClick={(e) => {
                             e.stopPropagation();
                             handleDeleteSession(session.id);
@@ -1077,7 +1193,7 @@ ${results.transcript}
                             <ul>
                                 {Object.entries(activeSession.speakers).map(([id, name]) => (
                                     <li key={id} style={styles.speakerItem}>
-                                        <span>{id}: {name}</span>
+                                        <span>{name}</span>
                                         <button onClick={() => handleRenameSpeaker(activeSession.id, id)} style={styles.renameButton}>✏️</button>
                                     </li>
                                 ))}
@@ -1103,7 +1219,7 @@ ${results.transcript}
     return (
         <div style={styles.appContainer}>
             <header style={styles.header}>
-                <h1 style={styles.title}>{t.title}</h1>
+                <h1 style={styles.title} onClick={handleTitleClick}>{t.title}</h1>
                 <p style={styles.subtitle}>{t.subtitle}</p>
             </header>
 
@@ -1138,13 +1254,15 @@ ${results.transcript}
                              🎤
                         </button>
                     )}
+                    <p style={styles.mobileFooterText}>{t.footerText}</p>
                 </div>
             )}
             
             {renderActionModal()}
             {renderDeviceSelectorModal()}
-
-            <footer style={styles.footer}>
+            {renderEasterEggModal()}
+            
+            <footer style={{...styles.footer, ...(isMobileView && { display: 'none' })}}>
                 <p>{t.footerText}</p>
             </footer>
         </div>
@@ -1171,6 +1289,8 @@ const styles: { [key: string]: CSSProperties } = {
         fontSize: '2.5rem',
         fontWeight: 700,
         color: '#00A99D',
+        cursor: 'pointer',
+        userSelect: 'none',
     },
     subtitle: {
         margin: '0.25rem 0 0',
@@ -1274,7 +1394,7 @@ const styles: { [key: string]: CSSProperties } = {
         padding: '1rem',
         borderRadius: '8px',
         cursor: 'pointer',
-        transition: 'background-color 0.2s, box-shadow 0.2s',
+        transition: 'background-color 0.2s, box-shadow 0.2s, transform 0.2s',
         border: `1px solid ${isDarkMode ? '#333' : '#E0E0E0'}`,
         display: 'flex',
         justifyContent: 'space-between',
@@ -1287,11 +1407,15 @@ const styles: { [key: string]: CSSProperties } = {
     },
     sessionCardContent: {
         flex: 1,
+        overflow: 'hidden',
     },
     sessionTitle: {
         margin: 0,
         fontSize: '1rem',
         fontWeight: 600,
+        whiteSpace: 'nowrap',
+        overflow: 'hidden',
+        textOverflow: 'ellipsis',
     },
     sessionDate: {
         margin: '0.25rem 0 0',
@@ -1378,6 +1502,7 @@ const styles: { [key: string]: CSSProperties } = {
         fontSize: '0.8rem',
         cursor: 'pointer',
         whiteSpace: 'nowrap',
+        transition: 'background-color 0.2s',
     },
     speakerItem: {
         display: 'flex',
@@ -1402,6 +1527,7 @@ const styles: { [key: string]: CSSProperties } = {
         justifyContent: 'center',
         alignItems: 'center',
         zIndex: 1000,
+        animation: 'fadeIn 0.3s ease',
     },
     modalContent: {
         backgroundColor: isDarkMode ? '#282828' : '#fff',
@@ -1411,6 +1537,7 @@ const styles: { [key: string]: CSSProperties } = {
         width: '90%',
         position: 'relative',
         boxShadow: '0 5px 15px rgba(0,0,0,0.3)',
+        animation: 'slideIn 0.3s ease',
     },
     modalCloseButton: {
         position: 'absolute',
@@ -1454,9 +1581,16 @@ const styles: { [key: string]: CSSProperties } = {
         right: 0,
         padding: '1rem',
         display: 'flex',
+        flexDirection: 'column',
         justifyContent: 'center',
         alignItems: 'center',
+        gap: '0.5rem',
         background: `linear-gradient(to top, ${isDarkMode ? '#121212' : '#F7F9FC'} 80%, transparent)`,
+    },
+    mobileFooterText: {
+        fontSize: '0.8rem',
+        color: '#999',
+        margin: 0,
     },
     fab: {
         width: '60px',
@@ -1471,6 +1605,7 @@ const styles: { [key: string]: CSSProperties } = {
         alignItems: 'center',
         boxShadow: '0 4px 15px rgba(0, 169, 157, 0.4)',
         cursor: 'pointer',
+        transition: 'transform 0.2s ease',
     },
     backButton: {
         background: 'none',
@@ -1518,13 +1653,52 @@ const styles: { [key: string]: CSSProperties } = {
         gap: '0.5rem',
         marginTop: '1rem',
     },
+    easterEggTitle: {
+        color: '#00A99D',
+        textAlign: 'center',
+        marginTop: 0,
+    },
+    featureList: {
+        listStyleType: '"✅ "',
+        paddingLeft: '20px',
+    },
+    creatorCredit: {
+        textAlign: 'center',
+        marginTop: '2rem',
+        fontSize: '0.9rem',
+        color: isDarkMode ? '#aaa' : '#555',
+    },
 };
 
-// --- Keyframes for Loader ---
+// --- Keyframes for Animations ---
 const keyframes = `
     @keyframes spin {
         0% { transform: rotate(0deg); }
         100% { transform: rotate(360deg); }
+    }
+    @keyframes fadeIn {
+        from { opacity: 0; }
+        to { opacity: 1; }
+    }
+    @keyframes slideIn {
+        from { transform: translateY(-20px); opacity: 0; }
+        to { transform: translateY(0); opacity: 1; }
+    }
+    .session-card:hover {
+        transform: translateY(-3px);
+        box-shadow: 0 4px 12px rgba(0, 0, 0, ${isDarkMode ? 0.3 : 0.08});
+    }
+    .delete-button:hover {
+        background-color: ${isDarkMode ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.05)'};
+    }
+    .action-button, button {
+      transition: opacity 0.2s ease, transform 0.2s ease;
+    }
+    .action-button:hover, button:hover {
+       opacity: 0.9;
+    }
+    .action-button:active, button:active {
+       transform: scale(0.97);
     }
 `;
 const styleSheet = document.createElement("style");
