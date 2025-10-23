@@ -322,7 +322,7 @@ const translations = {
         keepAwakeInfo: '在錄音期間防止螢幕關閉。',
         backToList: '返回會議列表',
         recordPhoneCallTitle: '正在錄製電話通話？',
-        recordPhoneCallInstruction: '為獲得最佳品質，請連接您的耳機。您也可以使用手機的揚聲器。點擊錄音按鈕開始。',
+        recordPhoneCallInstruction: '為獲得最佳品質，請連接您的耳機。您也可以使用手機的揚声器。點擊錄音按鈕開始。',
         selectAudioDeviceTitle: '選擇音訊來源',
         selectAudioDeviceInstruction: '請選擇您要用於錄音的麥克風。',
         start: '開始',
@@ -444,6 +444,65 @@ const createDocumentTool: FunctionDeclaration = {
   },
 };
 
+// --- Consent Modal Component ---
+const ConsentModal: React.FC<{ onConsent: () => void; styles: { [key: string]: CSSProperties } }> = ({ onConsent, styles }) => {
+    const [isChecked1, setIsChecked1] = useState(false);
+    const [isChecked2, setIsChecked2] = useState(false);
+    const allChecked = isChecked1 && isChecked2;
+
+    const handleConsent = () => {
+        if (allChecked) {
+            onConsent();
+        }
+    };
+
+    return (
+        <div style={styles.modalBackdrop}>
+            <div style={{...styles.modalContent, maxWidth: '450px'}}>
+                <h2 style={{marginTop: 0, textAlign: 'center', color: '#00A99D'}}>{t.consentTitle}</h2>
+                
+                <div style={styles.consentCheckboxContainer} onClick={() => setIsChecked1(!isChecked1)}>
+                    <input
+                        type="checkbox"
+                        id="consent-check-1"
+                        checked={isChecked1}
+                        onChange={e => { e.stopPropagation(); setIsChecked1(e.target.checked); }}
+                        style={{ marginTop: '4px' }}
+                    />
+                    <label htmlFor="consent-check-1" style={{cursor: 'pointer'}}>{t.consentInternalUse}</label>
+                </div>
+                
+                <div style={styles.consentCheckboxContainer} onClick={() => setIsChecked2(!isChecked2)}>
+                    <input
+                        type="checkbox"
+                        id="consent-check-2"
+                        checked={isChecked2}
+                        onChange={e => { e.stopPropagation(); setIsChecked2(e.target.checked); }}
+                         style={{ marginTop: '4px' }}
+                    />
+                    <label htmlFor="consent-check-2" style={{cursor: 'pointer'}}>{t.consentNoCopy}</label>
+                </div>
+
+                <button
+                    onClick={handleConsent}
+                    disabled={!allChecked}
+                    style={{
+                        ...styles.button,
+                        ...styles.startButton,
+                        width: '100%',
+                        marginTop: '1.5rem',
+                        opacity: allChecked ? 1 : 0.5,
+                        cursor: allChecked ? 'pointer' : 'not-allowed',
+                    }}
+                >
+                    {t.consentContinue}
+                </button>
+            </div>
+        </div>
+    );
+};
+
+
 // --- Main App Component ---
 const App: React.FC = () => {
     // --- State Management ---
@@ -506,6 +565,14 @@ const App: React.FC = () => {
         }
     }, [sessions]);
 
+    const handleConsent = () => {
+        try {
+            localStorage.setItem('verbatim_consent', 'true');
+        } catch (e) {
+            console.error("Failed to save consent to localStorage", e);
+        }
+        setHasConsented(true);
+    };
 
     // --- Geolocation ---
     const [location, setLocation] = useState<{ name: string; mapUrl: string } | null>(null);
@@ -952,68 +1019,6 @@ ${results.transcript}
         session.results.summary.toLowerCase().includes(searchTerm.toLowerCase()) ||
         session.results.transcript.toLowerCase().includes(searchTerm.toLowerCase())
     );
-
-    const renderConsentModal = () => {
-        const [isChecked1, setIsChecked1] = useState(false);
-        const [isChecked2, setIsChecked2] = useState(false);
-        const allChecked = isChecked1 && isChecked2;
-
-        const handleConsent = () => {
-            if (allChecked) {
-                try {
-                    localStorage.setItem('verbatim_consent', 'true');
-                } catch (e) {
-                    console.error("Failed to save consent to localStorage", e);
-                }
-                setHasConsented(true);
-            }
-        };
-
-        return (
-            <div style={styles.modalBackdrop}>
-                <div style={{...styles.modalContent, maxWidth: '450px'}}>
-                    <h2 style={{marginTop: 0, textAlign: 'center', color: '#00A99D'}}>{t.consentTitle}</h2>
-                    
-                    <div style={styles.consentCheckboxContainer} onClick={() => setIsChecked1(!isChecked1)}>
-                        <input
-                            type="checkbox"
-                            id="consent-check-1"
-                            checked={isChecked1}
-                            onChange={e => { e.stopPropagation(); setIsChecked1(e.target.checked); }}
-                            style={{ marginTop: '4px' }}
-                        />
-                        <label htmlFor="consent-check-1" style={{cursor: 'pointer'}}>{t.consentInternalUse}</label>
-                    </div>
-                    
-                    <div style={styles.consentCheckboxContainer} onClick={() => setIsChecked2(!isChecked2)}>
-                        <input
-                            type="checkbox"
-                            id="consent-check-2"
-                            checked={isChecked2}
-                            onChange={e => { e.stopPropagation(); setIsChecked2(e.target.checked); }}
-                             style={{ marginTop: '4px' }}
-                        />
-                        <label htmlFor="consent-check-2" style={{cursor: 'pointer'}}>{t.consentNoCopy}</label>
-                    </div>
-
-                    <button
-                        onClick={handleConsent}
-                        disabled={!allChecked}
-                        style={{
-                            ...styles.button,
-                            ...styles.startButton,
-                            width: '100%',
-                            marginTop: '1.5rem',
-                            opacity: allChecked ? 1 : 0.5,
-                            cursor: allChecked ? 'pointer' : 'not-allowed',
-                        }}
-                    >
-                        {t.consentContinue}
-                    </button>
-                </div>
-            </div>
-        );
-    };
     
     const renderDeviceSelectorModal = () => {
         if (!showDeviceSelector) return null;
@@ -1364,7 +1369,7 @@ ${results.transcript}
                 </div>
             )}
             
-            {!hasConsented && renderConsentModal()}
+            {!hasConsented && <ConsentModal onConsent={handleConsent} styles={styles} />}
             {renderActionModal()}
             {renderDeviceSelectorModal()}
             {renderEasterEggModal()}
