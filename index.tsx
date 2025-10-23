@@ -1,5 +1,4 @@
 
-
 import React, { useState, useRef, CSSProperties, useEffect, useCallback } from 'react';
 import { createRoot } from 'react-dom/client';
 import { GoogleGenAI, Type, FunctionDeclaration } from "@google/genai";
@@ -73,6 +72,12 @@ const translations = {
         keepAwake: 'Keep Screen Awake',
         keepAwakeInfo: 'Prevents the screen from turning off during a recording session.',
         backToList: 'Back to Sessions',
+        recordPhoneCallTitle: 'Recording a Phone Call?',
+        recordPhoneCallInstruction: 'For best quality, connect your headset. You can also use your phone\'s speaker. Tap the record button to begin.',
+        selectAudioDeviceTitle: 'Select Audio Source',
+        selectAudioDeviceInstruction: 'Choose the microphone you want to use for the recording.',
+        start: 'Start',
+        cancel: 'Cancel',
     },
     es: {
         title: 'Verbatim',
@@ -128,6 +133,12 @@ const translations = {
         keepAwake: 'Mantener Pantalla Encendida',
         keepAwakeInfo: 'Evita que la pantalla se apague durante una sesión de grabación.',
         backToList: 'Volver a Sesiones',
+        recordPhoneCallTitle: '¿Grabando una llamada telefónica?',
+        recordPhoneCallInstruction: 'Para la mejor calidad, conecta tus auriculares. También puedes usar el altavoz de tu teléfono. Toca el botón de grabar para comenzar.',
+        selectAudioDeviceTitle: 'Seleccionar Fuente de Audio',
+        selectAudioDeviceInstruction: 'Elige el micrófono que deseas utilizar para la grabación.',
+        start: 'Comenzar',
+        cancel: 'Cancelar',
     },
     'zh-CN': {
         title: 'Verbatim',
@@ -183,6 +194,12 @@ const translations = {
         keepAwake: '保持屏幕常亮',
         keepAwakeInfo: '在录音期间防止屏幕关闭。',
         backToList: '返回会话列表',
+        recordPhoneCallTitle: '正在录制电话通话？',
+        recordPhoneCallInstruction: '为获得最佳音质，请连接您的耳机。您也可以使用手机的扬声器。点击录音按钮开始。',
+        selectAudioDeviceTitle: '选择音频源',
+        selectAudioDeviceInstruction: '请选择您要用于录音的麦克风。',
+        start: '开始',
+        cancel: '取消',
     },
     'zh-TW': {
         title: 'Verbatim',
@@ -238,6 +255,12 @@ const translations = {
         keepAwake: '保持螢幕喚醒',
         keepAwakeInfo: '在錄音期間防止螢幕關閉。',
         backToList: '返回會議列表',
+        recordPhoneCallTitle: '正在錄製電話通話？',
+        recordPhoneCallInstruction: '為獲得最佳品質，請連接您的耳機。您也可以使用手機的揚聲器。點擊錄音按鈕開始。',
+        selectAudioDeviceTitle: '選擇音訊來源',
+        selectAudioDeviceInstruction: '請選擇您要用於錄音的麥克風。',
+        start: '開始',
+        cancel: '取消',
     }
 };
 
@@ -331,6 +354,9 @@ const App: React.FC = () => {
     const [showCopiedMessage, setShowCopiedMessage] = useState(false);
     const [keepAwake, setKeepAwake] = useState(false);
     const [isMobileView, setIsMobileView] = useState(window.innerWidth < 768);
+    const [showDeviceSelector, setShowDeviceSelector] = useState(false);
+    const [audioDevices, setAudioDevices] = useState<MediaDeviceInfo[]>([]);
+    const [selectedAudioDevice, setSelectedAudioDevice] = useState<string>('');
 
 
     // --- Refs ---
@@ -536,9 +562,35 @@ const App: React.FC = () => {
 
 
     // --- Recording Logic ---
-    const handleStartRecording = async () => {
+    const prepareRecording = async () => {
         try {
+             // First, get microphone permission. This is necessary for enumerateDevices to return full device labels.
             const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+            stream.getTracks().forEach(track => track.stop()); // We don't need this stream, just the permission.
+
+            const devices = await navigator.mediaDevices.enumerateDevices();
+            const mics = devices.filter(device => device.kind === 'audioinput');
+            setAudioDevices(mics);
+            if (mics.length > 0) {
+                setSelectedAudioDevice(mics[0].deviceId);
+            }
+            setShowDeviceSelector(true);
+        } catch (err) {
+            console.error("Error preparing recording:", err);
+            setError(t.micPermissionError);
+        }
+    };
+
+    const startRecordingWithDevice = async (deviceId: string) => {
+        if (!deviceId) {
+            setError('No audio device selected.');
+            return;
+        }
+        setShowDeviceSelector(false);
+        try {
+            const stream = await navigator.mediaDevices.getUserMedia({ 
+                audio: { deviceId: { exact: deviceId } } 
+            });
             mediaRecorderRef.current = new MediaRecorder(stream);
             audioChunksRef.current = [];
 
@@ -552,8 +604,8 @@ const App: React.FC = () => {
             setIsRecording(true);
             setRecordingTime(0);
             setError(null);
-            setActiveSession(null); // Clear active session view
-            getLocation(); // Get location at the start of the recording
+            setActiveSession(null);
+            getLocation();
 
             if (recordingTimerRef.current) clearInterval(recordingTimerRef.current);
             recordingTimerRef.current = setInterval(() => {
@@ -565,7 +617,7 @@ const App: React.FC = () => {
             }, 1000);
 
         } catch (err) {
-            console.error("Error starting recording:", err);
+            console.error("Error starting recording with device:", err);
             setError(t.micPermissionError);
         }
     };
@@ -756,6 +808,42 @@ ${results.transcript}
         session.results.transcript.toLowerCase().includes(searchTerm.toLowerCase())
     );
     
+    const renderDeviceSelectorModal = () => {
+        if (!showDeviceSelector) return null;
+
+        const handleConfirm = () => {
+            startRecordingWithDevice(selectedAudioDevice);
+        };
+
+        const handleCancel = () => {
+            setShowDeviceSelector(false);
+        };
+
+        return (
+            <div style={styles.modalBackdrop} onClick={handleCancel}>
+                <div style={styles.modalContent} onClick={(e) => e.stopPropagation()}>
+                    <h3>{t.selectAudioDeviceTitle}</h3>
+                    <p>{t.selectAudioDeviceInstruction}</p>
+                    <select
+                        value={selectedAudioDevice}
+                        onChange={(e) => setSelectedAudioDevice(e.target.value)}
+                        style={styles.deviceSelector}
+                    >
+                        {audioDevices.map(device => (
+                            <option key={device.deviceId} value={device.deviceId}>
+                                {device.label || `Microphone ${audioDevices.indexOf(device) + 1}`}
+                            </option>
+                        ))}
+                    </select>
+                    <div style={styles.modalActions}>
+                        <button onClick={handleCancel} className="action-button secondary">{t.cancel}</button>
+                        <button onClick={handleConfirm} className="action-button">{t.start}</button>
+                    </div>
+                </div>
+            </div>
+        );
+    };
+
     const renderActionModal = () => {
         if (!actionModalData) return null;
 
@@ -859,7 +947,7 @@ ${results.transcript}
                     )}
                 </>
             ) : (
-                <button onClick={handleStartRecording} style={{...styles.button, ...styles.startButton}} disabled={isAnalyzing}>
+                <button onClick={prepareRecording} style={{...styles.button, ...styles.startButton}} disabled={isAnalyzing}>
                     {isAnalyzing ? t.analyzing : t.startRecording}
                 </button>
             )}
@@ -868,6 +956,15 @@ ${results.transcript}
         </div>
     );
     
+    const renderMobileCta = () => (
+        !isRecording && !isAnalyzing && (
+            <div style={styles.mobileCtaCard}>
+                <h3 style={styles.mobileCtaTitle}>📞 {t.recordPhoneCallTitle}</h3>
+                <p style={styles.mobileCtaText}>{t.recordPhoneCallInstruction}</p>
+            </div>
+        )
+    );
+
     const renderSessionList = () => (
          <div style={styles.sessionList}>
             <h2 style={styles.listHeader}>{t.recentSessions}</h2>
@@ -1005,16 +1102,18 @@ ${results.transcript}
             
             <main style={{
                 ...styles.mainContent,
-                // Fix: Apply mobile styles conditionally based on isMobileView state.
-                // React's inline styles do not support media queries directly.
                 ...(isMobileView && {
                     display: 'block',
                     padding: '1rem',
-                    gridTemplateColumns: '1fr', // Replicates original media query behavior
                 })
             }}>
                 {isMobileView ? (
-                    activeSession ? renderSessionDetail() : renderSessionList()
+                    activeSession ? renderSessionDetail() : (
+                        <>
+                            {renderMobileCta()}
+                            {renderSessionList()}
+                        </>
+                    )
                 ) : (
                     <>
                         {renderSessionList()}
@@ -1026,7 +1125,7 @@ ${results.transcript}
             {isMobileView && (
                 <div style={styles.mobileControlsContainer}>
                     {isRecording || isAnalyzing ? renderControls() : (
-                        <button onClick={handleStartRecording} style={styles.fab} disabled={isAnalyzing}>
+                        <button onClick={prepareRecording} style={styles.fab} disabled={isAnalyzing}>
                              🎤
                         </button>
                     )}
@@ -1034,6 +1133,7 @@ ${results.transcript}
             )}
             
             {renderActionModal()}
+            {renderDeviceSelectorModal()}
 
             <footer style={styles.footer}>
                 <p>{t.footerText}</p>
@@ -1242,10 +1342,14 @@ const styles: { [key: string]: CSSProperties } = {
     },
     transcript: {
         whiteSpace: 'pre-wrap',
-        wordWrap: 'break-word',
+        wordBreak: 'break-word',
+        fontFamily: 'monospace',
+        fontSize: '0.9rem',
+        lineHeight: 1.6,
+        color: isDarkMode ? '#ccc' : '#333',
         maxHeight: '400px',
         overflowY: 'auto',
-        backgroundColor: isDarkMode ? '#111' : '#EEE',
+        backgroundColor: isDarkMode ? 'rgba(0,0,0,0.2)' : 'rgba(0,0,0,0.03)',
         padding: '1rem',
         borderRadius: '8px',
     },
@@ -1254,36 +1358,29 @@ const styles: { [key: string]: CSSProperties } = {
         justifyContent: 'space-between',
         alignItems: 'center',
         gap: '1rem',
-        marginBottom: '0.5rem',
+        padding: '0.5rem 0',
+    },
+    takeActionButton: {
+        backgroundColor: '#00A99D',
+        color: 'white',
+        border: 'none',
+        borderRadius: '20px',
+        padding: '0.3rem 0.8rem',
+        fontSize: '0.8rem',
+        cursor: 'pointer',
+        whiteSpace: 'nowrap',
     },
     speakerItem: {
         display: 'flex',
         justifyContent: 'space-between',
         alignItems: 'center',
-        gap: '1rem',
-        marginBottom: '0.5rem',
+        padding: '0.2rem 0',
     },
     renameButton: {
         background: 'none',
         border: 'none',
         cursor: 'pointer',
         fontSize: '1rem',
-    },
-    takeActionButton: {
-        backgroundColor: 'rgba(0, 169, 157, 0.2)',
-        color: '#00A99D',
-        border: 'none',
-        borderRadius: '20px',
-        padding: '0.3rem 0.8rem',
-        fontSize: '0.8rem',
-        fontWeight: 600,
-        cursor: 'pointer',
-        flexShrink: 0,
-    },
-    welcomeContainer: {
-        textAlign: 'center',
-        padding: '4rem 1rem',
-        color: '#999',
     },
     modalBackdrop: {
         position: 'fixed',
@@ -1298,12 +1395,13 @@ const styles: { [key: string]: CSSProperties } = {
         zIndex: 1000,
     },
     modalContent: {
-        backgroundColor: isDarkMode ? '#282828' : 'white',
+        backgroundColor: isDarkMode ? '#282828' : '#fff',
         padding: '2rem',
         borderRadius: '12px',
-        width: '90%',
         maxWidth: '500px',
+        width: '90%',
         position: 'relative',
+        boxShadow: '0 5px 15px rgba(0,0,0,0.3)',
     },
     modalCloseButton: {
         position: 'absolute',
@@ -1311,41 +1409,47 @@ const styles: { [key: string]: CSSProperties } = {
         right: '15px',
         background: 'none',
         border: 'none',
-        fontSize: '1.5rem',
+        fontSize: '1.8rem',
         cursor: 'pointer',
         color: isDarkMode ? '#aaa' : '#555',
     },
     modalPre: {
         whiteSpace: 'pre-wrap',
-        wordWrap: 'break-word',
+        wordBreak: 'break-word',
+        backgroundColor: isDarkMode ? '#333' : '#f5f5f5',
+        padding: '1rem',
+        borderRadius: '8px',
         maxHeight: '200px',
         overflowY: 'auto',
-        backgroundColor: isDarkMode ? '#1E1E1E' : '#f0f0f0',
-        padding: '0.5rem',
-        borderRadius: '4px',
+    },
+    welcomeContainer: {
+        display: 'flex',
+        flexDirection: 'column',
+        justifyContent: 'center',
+        alignItems: 'center',
+        textAlign: 'center',
+        height: '100%',
+        color: '#999',
     },
     footer: {
         textAlign: 'center',
         padding: '1rem',
         fontSize: '0.8rem',
-        color: isDarkMode ? '#666' : '#999',
+        color: '#999',
         borderTop: `1px solid ${isDarkMode ? '#333' : '#E0E0E0'}`,
     },
-    // Mobile specific
     mobileControlsContainer: {
-        position: 'sticky',
+        position: 'fixed',
         bottom: 0,
         left: 0,
         right: 0,
         padding: '1rem',
-        backgroundColor: isDarkMode ? 'rgba(18, 18, 18, 0.9)' : 'rgba(247, 249, 252, 0.9)',
-        backdropFilter: 'blur(10px)',
-        borderTop: `1px solid ${isDarkMode ? '#333' : '#E0E0E0'}`,
+        display: 'flex',
+        justifyContent: 'center',
+        alignItems: 'center',
+        background: `linear-gradient(to top, ${isDarkMode ? '#121212' : '#F7F9FC'} 80%, transparent)`,
     },
     fab: {
-        position: 'fixed',
-        bottom: '2rem',
-        right: '2rem',
         width: '60px',
         height: '60px',
         borderRadius: '50%',
@@ -1358,44 +1462,68 @@ const styles: { [key: string]: CSSProperties } = {
         alignItems: 'center',
         boxShadow: '0 4px 15px rgba(0, 169, 157, 0.4)',
         cursor: 'pointer',
-        zIndex: 999,
     },
     backButton: {
         background: 'none',
         border: 'none',
         color: '#00A99D',
         fontSize: '1rem',
+        fontWeight: 600,
         cursor: 'pointer',
         marginBottom: '1rem',
-    }
+        display: 'inline-flex',
+        alignItems: 'center',
+    },
+    mobileCtaCard: {
+        backgroundColor: isDarkMode ? '#252525' : 'rgba(0, 169, 157, 0.05)',
+        border: `1px solid ${isDarkMode ? '#333' : 'rgba(0, 169, 157, 0.2)'}`,
+        borderRadius: '12px',
+        padding: '1rem',
+        marginBottom: '1rem',
+    },
+    mobileCtaTitle: {
+        margin: '0 0 0.5rem 0',
+        fontSize: '1.1rem',
+        fontWeight: 600,
+        color: isDarkMode ? '#E0E0E0' : '#202124',
+    },
+    mobileCtaText: {
+        margin: 0,
+        fontSize: '0.9rem',
+        lineHeight: 1.5,
+        color: isDarkMode ? '#bbb' : '#5F6368',
+    },
+    deviceSelector: {
+        width: '100%',
+        padding: '0.75rem',
+        borderRadius: '8px',
+        border: `1px solid ${isDarkMode ? '#444' : '#ccc'}`,
+        backgroundColor: isDarkMode ? '#222' : '#fff',
+        color: isDarkMode ? '#fff' : '#000',
+        marginBottom: '1rem',
+        fontSize: '1rem',
+    },
+    modalActions: {
+        display: 'flex',
+        justifyContent: 'flex-end',
+        gap: '0.5rem',
+        marginTop: '1rem',
+    },
 };
 
+// --- Keyframes for Loader ---
 const keyframes = `
-@keyframes spin {
-    0% { transform: rotate(0deg); }
-    100% { transform: rotate(360deg); }
-}
-
-/* Specific overrides for modal buttons */
-.action-button {
-    display: inline-block;
-    margin-top: 1rem;
-    padding: 0.75rem 1.5rem;
-    font-size: 1rem;
-    font-weight: 600;
-    border-radius: 50px;
-    border: none;
-    cursor: pointer;
-    background-color: #00A99D;
-    color: white !important;
-    text-decoration: none;
-    text-align: center;
-}
+    @keyframes spin {
+        0% { transform: rotate(0deg); }
+        100% { transform: rotate(360deg); }
+    }
 `;
 const styleSheet = document.createElement("style");
+styleSheet.type = "text/css";
 styleSheet.innerText = keyframes;
 document.head.appendChild(styleSheet);
 
 
-const root = createRoot(document.getElementById('root')!);
+// --- Render App ---
+const root = createRoot(document.getElementById('root') as HTMLElement);
 root.render(<App />);
