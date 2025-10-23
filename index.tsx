@@ -95,6 +95,10 @@ const translations = {
             'Offline PWA Functionality',
             'Audio Source Selection',
         ],
+        consentTitle: 'Important Notice',
+        consentInternalUse: 'I acknowledge this application is for internal Impactory Institute use only.',
+        consentNoCopy: 'I agree not to copy or distribute this application without permission.',
+        consentContinue: 'Accept & Continue',
     },
     es: {
         title: 'Verbatim',
@@ -174,6 +178,10 @@ const translations = {
             'Funcionalidad PWA Offline',
             'Selección de Fuente de Audio',
         ],
+        consentTitle: 'Aviso Importante',
+        consentInternalUse: 'Reconozco que esta aplicación es para uso interno exclusivo del Impactory Institute.',
+        consentNoCopy: 'Acepto no copiar ni distribuir esta aplicación sin permiso.',
+        consentContinue: 'Aceptar y Continuar',
     },
     'zh-CN': {
         title: 'Verbatim',
@@ -253,6 +261,10 @@ const translations = {
             '离线 PWA 功能',
             '音频源选择',
         ],
+        consentTitle: '重要通知',
+        consentInternalUse: '我确认此应用程序仅供 Impactory Institute 内部使用。',
+        consentNoCopy: '我同意未经许可不会复制或分发此应用程序。',
+        consentContinue: '接受并继续',
     },
     'zh-TW': {
         title: 'Verbatim',
@@ -332,6 +344,10 @@ const translations = {
             '離線 PWA 功能',
             '音訊源選擇',
         ],
+        consentTitle: '重要通知',
+        consentInternalUse: '我確認此應用程式僅供 Impactory Institute 內部使用。',
+        consentNoCopy: '我同意未經許可不會複製或分發此應用程式。',
+        consentContinue: '接受並繼續',
     }
 };
 
@@ -430,6 +446,13 @@ const App: React.FC = () => {
     const [selectedAudioDevice, setSelectedAudioDevice] = useState<string>('');
     const [easterEggClicks, setEasterEggClicks] = useState(0);
     const [showEasterEgg, setShowEasterEgg] = useState(false);
+    const [hasConsented, setHasConsented] = useState(() => {
+        try {
+            return localStorage.getItem('verbatim_consent') === 'true';
+        } catch {
+            return false;
+        }
+    });
 
     // --- Refs ---
     const mediaRecorderRef = useRef<MediaRecorder | null>(null);
@@ -908,6 +931,68 @@ ${results.transcript}
         session.results.summary.toLowerCase().includes(searchTerm.toLowerCase()) ||
         session.results.transcript.toLowerCase().includes(searchTerm.toLowerCase())
     );
+
+    const renderConsentModal = () => {
+        const [isChecked1, setIsChecked1] = useState(false);
+        const [isChecked2, setIsChecked2] = useState(false);
+        const allChecked = isChecked1 && isChecked2;
+
+        const handleConsent = () => {
+            if (allChecked) {
+                try {
+                    localStorage.setItem('verbatim_consent', 'true');
+                } catch (e) {
+                    console.error("Failed to save consent to localStorage", e);
+                }
+                setHasConsented(true);
+            }
+        };
+
+        return (
+            <div style={styles.modalBackdrop}>
+                <div style={{...styles.modalContent, maxWidth: '450px'}}>
+                    <h2 style={{marginTop: 0, textAlign: 'center', color: '#00A99D'}}>{t.consentTitle}</h2>
+                    
+                    <div style={styles.consentCheckboxContainer} onClick={() => setIsChecked1(!isChecked1)}>
+                        <input
+                            type="checkbox"
+                            id="consent-check-1"
+                            checked={isChecked1}
+                            onChange={e => { e.stopPropagation(); setIsChecked1(e.target.checked); }}
+                            style={{ marginTop: '4px' }}
+                        />
+                        <label htmlFor="consent-check-1" style={{cursor: 'pointer'}}>{t.consentInternalUse}</label>
+                    </div>
+                    
+                    <div style={styles.consentCheckboxContainer} onClick={() => setIsChecked2(!isChecked2)}>
+                        <input
+                            type="checkbox"
+                            id="consent-check-2"
+                            checked={isChecked2}
+                            onChange={e => { e.stopPropagation(); setIsChecked2(e.target.checked); }}
+                             style={{ marginTop: '4px' }}
+                        />
+                        <label htmlFor="consent-check-2" style={{cursor: 'pointer'}}>{t.consentNoCopy}</label>
+                    </div>
+
+                    <button
+                        onClick={handleConsent}
+                        disabled={!allChecked}
+                        style={{
+                            ...styles.button,
+                            ...styles.startButton,
+                            width: '100%',
+                            marginTop: '1.5rem',
+                            opacity: allChecked ? 1 : 0.5,
+                            cursor: allChecked ? 'pointer' : 'not-allowed',
+                        }}
+                    >
+                        {t.consentContinue}
+                    </button>
+                </div>
+            </div>
+        );
+    };
     
     const renderDeviceSelectorModal = () => {
         if (!showDeviceSelector) return null;
@@ -1258,6 +1343,7 @@ ${results.transcript}
                 </div>
             )}
             
+            {!hasConsented && renderConsentModal()}
             {renderActionModal()}
             {renderDeviceSelectorModal()}
             {renderEasterEggModal()}
@@ -1667,6 +1753,17 @@ const styles: { [key: string]: CSSProperties } = {
         marginTop: '2rem',
         fontSize: '0.9rem',
         color: isDarkMode ? '#aaa' : '#555',
+    },
+    consentCheckboxContainer: {
+        display: 'flex',
+        alignItems: 'flex-start',
+        gap: '10px',
+        padding: '0.75rem',
+        backgroundColor: isDarkMode ? '#333' : '#f5f5f5',
+        borderRadius: '8px',
+        marginBottom: '0.75rem',
+        cursor: 'pointer',
+        userSelect: 'none',
     },
 };
 
