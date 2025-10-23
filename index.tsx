@@ -1,4 +1,5 @@
 
+
 import React, { useState, useRef, CSSProperties, useEffect, useCallback } from 'react';
 import { createRoot } from 'react-dom/client';
 import { GoogleGenAI, Type, FunctionDeclaration } from "@google/genai";
@@ -68,7 +69,10 @@ const translations = {
         deleteSession: 'Delete Session?',
         deleteConfirmation: 'Are you sure you want to delete this session? This action cannot be undone.',
         searchPlaceholder: 'Search sessions...',
-        toggleMiniView: 'Toggle Mini View'
+        toggleMiniView: 'Toggle Mini View',
+        keepAwake: 'Keep Screen Awake',
+        keepAwakeInfo: 'Prevents the screen from turning off during a recording session.',
+        backToList: 'Back to Sessions',
     },
     es: {
         title: 'Verbatim',
@@ -120,7 +124,10 @@ const translations = {
         deleteSession: '¿Eliminar Sesión?',
         deleteConfirmation: '¿Estás seguro de que quieres eliminar esta sesión? Esta acción no se puede deshacer.',
         searchPlaceholder: 'Buscar sesiones...',
-        toggleMiniView: 'Alternar Mini Vista'
+        toggleMiniView: 'Alternar Mini Vista',
+        keepAwake: 'Mantener Pantalla Encendida',
+        keepAwakeInfo: 'Evita que la pantalla se apague durante una sesión de grabación.',
+        backToList: 'Volver a Sesiones',
     },
     'zh-CN': {
         title: 'Verbatim',
@@ -172,7 +179,10 @@ const translations = {
         deleteSession: '删除会话？',
         deleteConfirmation: '您确定要删除此会话吗？此操作无法撤销。',
         searchPlaceholder: '搜索会话...',
-        toggleMiniView: '切换迷你视图'
+        toggleMiniView: '切换迷你视图',
+        keepAwake: '保持屏幕常亮',
+        keepAwakeInfo: '在录音期间防止屏幕关闭。',
+        backToList: '返回会话列表',
     },
     'zh-TW': {
         title: 'Verbatim',
@@ -224,7 +234,10 @@ const translations = {
         deleteSession: '刪除會議？',
         deleteConfirmation: '您確定要刪除此會議嗎？此操作無法復原。',
         searchPlaceholder: '搜尋會議...',
-        toggleMiniView: '切換迷你視圖'
+        toggleMiniView: '切換迷你視圖',
+        keepAwake: '保持螢幕喚醒',
+        keepAwakeInfo: '在錄音期間防止螢幕關閉。',
+        backToList: '返回會議列表',
     }
 };
 
@@ -316,6 +329,8 @@ const App: React.FC = () => {
     const [loadingActionItem, setLoadingActionItem] = useState<string | null>(null);
     const [actionError, setActionError] = useState<string | null>(null);
     const [showCopiedMessage, setShowCopiedMessage] = useState(false);
+    const [keepAwake, setKeepAwake] = useState(false);
+    const [isMobileView, setIsMobileView] = useState(window.innerWidth < 768);
 
 
     // --- Refs ---
@@ -323,8 +338,10 @@ const App: React.FC = () => {
     const audioChunksRef = useRef<Blob[]>([]);
     const recordingTimerRef = useRef<NodeJS.Timeout | null>(null);
     const channelRef = useRef(new BroadcastChannel('verbatim_pip_channel'));
+    const wakeLockSentinelRef = useRef<any | null>(null);
 
-    // --- Data Persistence ---
+
+    // --- Data Persistence & Responsive View ---
     useEffect(() => {
         try {
             const savedSessions = localStorage.getItem('verbatim_sessions');
@@ -334,6 +351,10 @@ const App: React.FC = () => {
         } catch (e) {
             console.error("Failed to load sessions from localStorage", e);
         }
+
+        const handleResize = () => setIsMobileView(window.innerWidth < 768);
+        window.addEventListener('resize', handleResize);
+        return () => window.removeEventListener('resize', handleResize);
     }, []);
 
     useEffect(() => {
@@ -374,6 +395,41 @@ const App: React.FC = () => {
             { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
         );
     };
+    
+    // --- Wake Lock ---
+    const handleWakeLock = useCallback(async () => {
+        if (keepAwake && isRecording) {
+            try {
+                if ('wakeLock' in navigator && wakeLockSentinelRef.current === null) {
+                    wakeLockSentinelRef.current = await (navigator as any).wakeLock.request('screen');
+                    console.log('Screen Wake Lock is active.');
+                }
+            } catch (err: any) {
+                console.error(`Wake Lock failed: ${err.name}, ${err.message}`);
+            }
+        } else {
+            if (wakeLockSentinelRef.current) {
+                await wakeLockSentinelRef.current.release();
+                wakeLockSentinelRef.current = null;
+                console.log('Screen Wake Lock released.');
+            }
+        }
+    }, [keepAwake, isRecording]);
+
+    useEffect(() => {
+        handleWakeLock();
+    }, [keepAwake, isRecording, handleWakeLock]);
+    
+    useEffect(() => {
+        const handleVisibilityChange = () => {
+            if (document.visibilityState === 'visible') {
+                handleWakeLock();
+            }
+        };
+        document.addEventListener('visibilitychange', handleVisibilityChange);
+        return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
+    }, [handleWakeLock]);
+
 
     const handleStopRecording = useCallback(async () => {
         if (mediaRecorderRef.current && mediaRecorderRef.current.state === 'recording') {
@@ -452,7 +508,7 @@ const App: React.FC = () => {
         } finally {
             setIsAnalyzing(false);
         }
-    }, [location, pipWindow]);
+    }, [location, pipWindow, t.processingError, t.meetingTitle, t.locationUnavailable, t.noTranscript, t.noSummary]);
 
      // --- PiP Communication ---
     useEffect(() => {
@@ -660,35 +716,34 @@ ${results.transcript}
      const handleRenameSpeaker = (sessionId: string, oldName: string) => {
         const newName = prompt(`${t.renameSpeakerPrompt} ${oldName}:`, oldName);
         if (newName && newName.trim() !== "") {
-            setSessions(prevSessions =>
-                prevSessions.map(session => {
-                    if (session.id === sessionId) {
-                        const newSpeakers = { ...session.speakers, [oldName]: newName };
-                        // Also update the transcript
-                        const newTranscript = session.results.transcript.replace(
-                            new RegExp(`^${oldName}:`, 'gm'), 
-                            `${newName}:`
-                        );
-                        const updatedSession = { 
-                            ...session, 
-                            speakers: newSpeakers,
-                            results: { ...session.results, transcript: newTranscript }
-                        };
-
-                        if (activeSession?.id === sessionId) {
-                            setActiveSession(updatedSession);
-                        }
-                        return updatedSession;
-                    }
-                    return session;
-                })
-            );
+            const updatedSessions = sessions.map(session => {
+                if (session.id === sessionId) {
+                    const newSpeakers = { ...session.speakers, [oldName]: newName.trim() };
+                    const newTranscript = session.results.transcript.replace(
+                        new RegExp(`^${oldName}:`, 'gm'), 
+                        `${newName.trim()}:`
+                    );
+                    return { 
+                        ...session, 
+                        speakers: newSpeakers,
+                        results: { ...session.results, transcript: newTranscript }
+                    };
+                }
+                return session;
+            });
+            setSessions(updatedSessions);
+            
+            if(activeSession?.id === sessionId) {
+                const updatedActiveSession = updatedSessions.find(s => s.id === sessionId);
+                if (updatedActiveSession) setActiveSession(updatedActiveSession);
+            }
         }
     };
-
+    
     const handleDeleteSession = (sessionId: string) => {
         if (window.confirm(t.deleteConfirmation)) {
-            setSessions(prev => prev.filter(s => s.id !== sessionId));
+            const newSessions = sessions.filter(s => s.id !== sessionId);
+            setSessions(newSessions);
             if (activeSession?.id === sessionId) {
                 setActiveSession(null);
             }
@@ -700,623 +755,647 @@ ${results.transcript}
         session.results.summary.toLowerCase().includes(searchTerm.toLowerCase()) ||
         session.results.transcript.toLowerCase().includes(searchTerm.toLowerCase())
     );
-
-    // --- Component Styles ---
-    const styles: { [key: string]: CSSProperties } = {
-        appContainer: {
-            display: 'flex',
-            height: '100vh',
-            fontFamily: "'Poppins', sans-serif",
-            backgroundColor: isDarkMode ? '#121212' : '#F7F7F7',
-            color: isDarkMode ? '#E0E0E0' : '#333',
-        },
-        sidebar: {
-            width: '350px',
-            backgroundColor: isDarkMode ? '#1E1E1E' : '#FFFFFF',
-            borderRight: `1px solid ${isDarkMode ? '#333' : '#E0E0E0'}`,
-            display: 'flex',
-            flexDirection: 'column',
-            padding: '20px',
-            boxSizing: 'border-box'
-        },
-        header: {
-            marginBottom: '20px',
-        },
-        title: {
-            fontSize: '2rem',
-            fontWeight: 700,
-            color: '#00A99D',
-            margin: 0,
-            textAlign: 'center'
-        },
-        subtitle: {
-            fontSize: '0.9rem',
-            textAlign: 'center',
-            color: isDarkMode ? '#AAA' : '#777',
-            marginTop: '4px'
-        },
-        recordButton: {
-            width: '100%',
-            padding: '15px',
-            fontSize: '1.2rem',
-            fontWeight: 600,
-            backgroundColor: isRecording ? '#dc3545' : '#00A99D',
-            color: 'white',
-            border: 'none',
-            borderRadius: '12px',
-            cursor: 'pointer',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            gap: '10px',
-            transition: 'all 0.3s ease',
-            marginBottom: '10px'
-        },
-        secondaryButton: {
-             width: '100%',
-            padding: '10px',
-            fontSize: '1rem',
-            fontWeight: 600,
-            backgroundColor: isDarkMode ? '#333' : '#e9ecef',
-            color: isDarkMode ? '#E0E0E0' : '#495057',
-            border: `1px solid ${isDarkMode ? '#444' : '#ced4da'}`,
-            borderRadius: '8px',
-            cursor: 'pointer',
-            transition: 'background-color 0.2s',
-        },
-        recordIcon: {
-            animation: isRecording ? 'pulse 2s infinite' : 'none',
-        },
-        searchBox: {
-            width: '100%',
-            padding: '10px',
-            fontSize: '1rem',
-            border: `1px solid ${isDarkMode ? '#444' : '#CCC'}`,
-            borderRadius: '8px',
-            backgroundColor: isDarkMode ? '#2C2C2C' : '#FFF',
-            color: isDarkMode ? '#E0E0E0' : '#333',
-            margin: '20px 0',
-            boxSizing: 'border-box'
-        },
-        sessionListContainer: {
-            flex: 1,
-            overflowY: 'auto',
-            paddingRight: '5px'
-        },
-        sessionListHeader: {
-            fontSize: '1.1rem',
-            fontWeight: 600,
-            color: isDarkMode ? '#CCC' : '#555',
-            marginBottom: '10px',
-            paddingBottom: '5px',
-            borderBottom: `1px solid ${isDarkMode ? '#333' : '#E0E0E0'}`,
-        },
-        sessionItem: {
-            padding: '15px',
-            marginBottom: '10px',
-            borderRadius: '8px',
-            cursor: 'pointer',
-            border: `1px solid ${isDarkMode ? '#333' : '#E0E0E0'}`,
-            transition: 'all 0.2s',
-        },
-        sessionTitle: {
-            fontWeight: 600,
-            marginBottom: '5px',
-            whiteSpace: 'nowrap',
-            overflow: 'hidden',
-            textOverflow: 'ellipsis',
-        },
-        sessionDate: {
-            fontSize: '0.8rem',
-            color: isDarkMode ? '#AAA' : '#777',
-        },
-        footer: {
-            textAlign: 'center',
-            fontSize: '0.8rem',
-            color: '#777',
-            marginTop: '20px'
-        },
-        mainContent: {
-            flex: 1,
-            padding: '30px',
-            overflowY: 'auto',
-            position: 'relative',
-        },
-        welcomeView: {
-            textAlign: 'center',
-            paddingTop: '20vh',
-            color: isDarkMode ? '#AAA' : '#777',
-        },
-        welcomeLogo: {
-            fontSize: '4rem'
-        },
-        welcomeHeader: {
-            fontSize: '2.5rem',
-            fontWeight: 600,
-            color: isDarkMode ? '#E0E0E0' : '#333',
-        },
-        welcomeSubtext: {
-            fontSize: '1.2rem',
-        },
-        sessionView: {
-            maxWidth: '800px',
-            margin: '0 auto'
-        },
-        sessionHeader: {
-            marginBottom: '30px',
-            paddingBottom: '20px',
-            borderBottom: `1px solid ${isDarkMode ? '#444' : '#DDD'}`
-        },
-        sessionHeaderTitle: {
-            fontSize: '2rem',
-            fontWeight: 700,
-            margin: '0 0 10px 0'
-        },
-        sessionMetadata: {
-            display: 'flex',
-            gap: '20px',
-            color: isDarkMode ? '#BBB' : '#666',
-        },
-        metadataItem: {
-            display: 'flex',
-            alignItems: 'center',
-            gap: '5px'
-        },
-        locationLink: {
-            color: '#00A99D',
-            textDecoration: 'none'
-        },
-        resultsGrid: {
-            display: 'grid',
-            gridTemplateColumns: '1fr 1fr',
-            gap: '30px',
-            marginBottom: '30px'
-        },
-        card: {
-            backgroundColor: isDarkMode ? '#1E1E1E' : '#FFFFFF',
-            padding: '20px',
-            borderRadius: '12px',
-            border: `1px solid ${isDarkMode ? '#333' : '#E0E0E0'}`,
-            boxShadow: '0 4px 12px rgba(0,0,0,0.05)',
-        },
-        fullWidthCard: {
-            gridColumn: '1 / -1'
-        },
-        cardHeader: {
-            fontSize: '1.3rem',
-            fontWeight: 600,
-            marginBottom: '15px'
-        },
-        transcriptContent: {
-            whiteSpace: 'pre-wrap',
-            maxHeight: '400px',
-            overflowY: 'auto',
-            lineHeight: 1.6
-        },
-        actionList: {
-            listStyle: 'none',
-            padding: 0,
-            margin: 0
-        },
-        actionItem: {
-            display: 'flex',
-            justifyContent: 'space-between',
-            alignItems: 'center',
-            padding: '10px 0',
-            borderBottom: `1px solid ${isDarkMode ? '#333' : '#EEE'}`,
-            gap: '10px',
-        },
-        actionButton: {
-            backgroundColor: '#00A99D',
-            color: 'white',
-            border: 'none',
-            padding: '5px 10px',
-            borderRadius: '6px',
-            cursor: 'pointer',
-            fontSize: '0.8rem',
-            whiteSpace: 'nowrap',
-            opacity: 1,
-            transition: 'opacity 0.2s',
-        },
-        speakersList: {
-            display: 'flex',
-            flexWrap: 'wrap',
-            gap: '10px'
-        },
-        speakerTag: {
-             backgroundColor: isDarkMode ? '#333' : '#e9ecef',
-            color: isDarkMode ? '#E0E0E0' : '#495057',
-            padding: '5px 10px',
-            borderRadius: '15px',
-            fontSize: '0.9rem',
-            cursor: 'pointer'
-        },
-        error: {
-            color: '#dc3545',
-            textAlign: 'center',
-            margin: '10px 0'
-        },
-        loader: {
-            textAlign: 'center',
-            fontSize: '1.2rem',
-            color: '#00A99D'
-        },
-        topControls: {
-            position: 'absolute',
-            top: '30px',
-            right: '30px',
-            display: 'flex',
-            gap: '10px',
-        },
-        controlButton: {
-            background: isDarkMode ? '#2C2C2C' : '#FFF',
-            border: `1px solid ${isDarkMode ? '#444' : '#CCC'}`,
-            color: isDarkMode ? '#E0E0E0' : '#333',
-            padding: '8px 12px',
-            borderRadius: '8px',
-            cursor: 'pointer',
-            display: 'flex',
-            alignItems: 'center',
-            gap: '5px'
-        },
-        deleteButton: {
-            background: isDarkMode ? '#4a2529' : '#f8d7da',
-            border: `1px solid ${isDarkMode ? '#dc3545' : '#f5c6cb'}`,
-            color: isDarkMode ? '#f5c6cb' : '#721c24',
-        },
-        copiedPopup: {
-            position: 'fixed',
-            bottom: '20px',
-            left: '50%',
-            transform: 'translateX(-50%)',
-            backgroundColor: '#00A99D',
-            color: 'white',
-            padding: '10px 20px',
-            borderRadius: '8px',
-            zIndex: 1000,
-            boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
-        },
-        modalOverlay: {
-            position: 'fixed',
-            top: 0,
-            left: 0,
-            right: 0,
-            bottom: 0,
-            backgroundColor: 'rgba(0, 0, 0, 0.6)',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            zIndex: 100,
-        },
-        modalContent: {
-            backgroundColor: isDarkMode ? '#1E1E1E' : '#FFFFFF',
-            padding: '25px',
-            borderRadius: '12px',
-            width: '90%',
-            maxWidth: '500px',
-            boxShadow: '0 5px 15px rgba(0,0,0,0.3)',
-        },
-        modalHeader: {
-            fontSize: '1.4rem',
-            fontWeight: 600,
-            marginBottom: '20px',
-            borderBottom: `1px solid ${isDarkMode ? '#444' : '#DDD'}`,
-            paddingBottom: '15px'
-        },
-        modalFormLabel: {
-            display: 'block',
-            marginBottom: '5px',
-            fontWeight: 600,
-            fontSize: '0.9rem',
-            color: isDarkMode ? '#BBB' : '#666',
-        },
-        modalInput: {
-            width: '100%',
-            padding: '10px',
-            fontSize: '1rem',
-            border: `1px solid ${isDarkMode ? '#444' : '#CCC'}`,
-            borderRadius: '8px',
-            backgroundColor: isDarkMode ? '#2C2C2C' : '#FFF',
-            color: isDarkMode ? '#E0E0E0' : '#333',
-            marginBottom: '15px',
-            boxSizing: 'border-box'
-        },
-        modalTextarea: {
-            minHeight: '100px',
-            resize: 'vertical',
-        },
-        modalFooter: {
-            display: 'flex',
-            justifyContent: 'flex-end',
-            gap: '10px',
-            marginTop: '20px',
-        },
-        modalButton: {
-            padding: '10px 20px',
-            borderRadius: '8px',
-            border: 'none',
-            cursor: 'pointer',
-            fontWeight: 600,
-        },
-        modalPrimaryButton: {
-            backgroundColor: '#00A99D',
-            color: 'white',
-        },
-        modalSecondaryButton: {
-            backgroundColor: isDarkMode ? '#333' : '#e9ecef',
-            color: isDarkMode ? '#E0E0E0' : '#495057',
-        }
-    };
     
-    const activeSessionStyle = (session: Session) => ({
-        ...styles.sessionItem,
-        backgroundColor: activeSession?.id === session.id ? '#00A99D' : (isDarkMode ? '#2C2C2C' : '#FFF'),
-        color: activeSession?.id === session.id ? 'white' : (isDarkMode ? '#E0E0E0' : '#333'),
-        borderColor: activeSession?.id === session.id ? '#00A99D' : (isDarkMode ? '#444' : '#E0E0E0'),
-    });
-
-    const ActionModal = () => {
+    const renderActionModal = () => {
         if (!actionModalData) return null;
-        
+
         const { type, args, sourceItem } = actionModalData;
-        const [formData, setFormData] = useState(args || {});
-
-        useEffect(() => {
-            setFormData(args || {});
-        }, [args]);
-
-        const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
-            setFormData({ ...formData, [e.target.name]: e.target.value });
-        };
         
-        const handleOpenCalendar = () => {
-            const { title, date, time, description } = formData;
-            const startDate = `${date.replace(/-/g, '')}T${time.replace(':', '')}00`;
-            const url = `https://www.google.com/calendar/render?action=TEMPLATE&text=${encodeURIComponent(title)}&dates=${startDate}/${startDate}&details=${encodeURIComponent(description || '')}`;
-            window.open(url, '_blank');
-            setActionModalData(null);
-        };
-
-        const handleOpenGmail = () => {
-            const { to, subject, body } = formData;
-            const url = `https://mail.google.com/mail/?view=cm&fs=1&to=${encodeURIComponent(to)}&su=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
-            window.open(url, '_blank');
-            setActionModalData(null);
-        };
-
-        const handleOpenDocs = () => {
-            const { content } = formData;
-            navigator.clipboard.writeText(content);
-            window.open('https://docs.google.com/create', '_blank');
-            setActionModalData(null);
-        };
+        const closeModal = () => setActionModalData(null);
 
         const renderContent = () => {
             switch (type) {
                 case 'create_calendar_event':
-                    return <>
-                        <h3 style={styles.modalHeader}>{t.createCalendarEvent}</h3>
-                        <div>
-                            <label style={styles.modalFormLabel}>{t.titleLabel}</label>
-                            <input type="text" name="title" value={formData.title || ''} onChange={handleChange} style={styles.modalInput} />
-                            <label style={styles.modalFormLabel}>{t.dateLabel}</label>
-                            <input type="date" name="date" value={formData.date || ''} onChange={handleChange} style={styles.modalInput} />
-                            <label style={styles.modalFormLabel}>{t.timeLabel}</label>
-                            <input type="time" name="time" value={formData.time || ''} onChange={handleChange} style={styles.modalInput} />
-                            <label style={styles.modalFormLabel}>{t.descriptionLabel}</label>
-                            <textarea name="description" value={formData.description || ''} onChange={handleChange} style={{...styles.modalInput, ...styles.modalTextarea}}></textarea>
-                        </div>
-                        <footer style={styles.modalFooter}>
-                            <button onClick={() => setActionModalData(null)} style={{...styles.modalButton, ...styles.modalSecondaryButton}}>Cancel</button>
-                            <button onClick={handleOpenCalendar} style={{...styles.modalButton, ...styles.modalPrimaryButton}}>{t.openInCalendar}</button>
-                        </footer>
-                    </>;
+                    const calendarUrl = new URL('https://calendar.google.com/calendar/render');
+                    calendarUrl.searchParams.set('action', 'TEMPLATE');
+                    calendarUrl.searchParams.set('text', args.title || '');
+                    calendarUrl.searchParams.set('details', args.description || sourceItem || '');
+                    if (args.date && args.time) {
+                         const startDate = new Date(`${args.date}T${args.time}`);
+                         const endDate = new Date(startDate.getTime() + 60 * 60 * 1000); // Add 1 hour
+                         const toIso = (d: Date) => d.toISOString().replace(/[-:.]/g, '');
+                         calendarUrl.searchParams.set('dates', `${toIso(startDate)}/${toIso(endDate)}`);
+                    }
+                    return (
+                        <>
+                            <h3>{t.createCalendarEvent}</h3>
+                            <p><strong>{t.titleLabel}</strong> {args.title}</p>
+                            <p><strong>{t.descriptionLabel}</strong> {args.description || sourceItem}</p>
+                            <p><strong>{t.dateLabel}</strong> {args.date}</p>
+                            <p><strong>{t.timeLabel}</strong> {args.time}</p>
+                            <a href={calendarUrl.toString()} target="_blank" rel="noopener noreferrer" className="action-button">
+                                {t.openInCalendar}
+                            </a>
+                        </>
+                    );
                 case 'draft_email':
-                     return <>
-                        <h3 style={styles.modalHeader}>{t.draftEmail}</h3>
-                        <div>
-                            <label style={styles.modalFormLabel}>{t.toLabel}</label>
-                            <input type="email" name="to" value={formData.to || ''} onChange={handleChange} style={styles.modalInput} />
-                            <label style={styles.modalFormLabel}>{t.subjectLabel}</label>
-                            <input type="text" name="subject" value={formData.subject || ''} onChange={handleChange} style={styles.modalInput} />
-                             <label style={styles.modalFormLabel}>{t.bodyLabel}</label>
-                            <textarea name="body" value={formData.body || ''} onChange={handleChange} style={{...styles.modalInput, ...styles.modalTextarea}}></textarea>
-                        </div>
-                        <footer style={styles.modalFooter}>
-                            <button onClick={() => setActionModalData(null)} style={{...styles.modalButton, ...styles.modalSecondaryButton}}>Cancel</button>
-                            <button onClick={handleOpenGmail} style={{...styles.modalButton, ...styles.modalPrimaryButton}}>{t.openInGmail}</button>
-                        </footer>
-                    </>;
+                    const gmailUrl = `https://mail.google.com/mail/?view=cm&fs=1&to=${encodeURIComponent(args.to)}&su=${encodeURIComponent(args.subject)}&body=${encodeURIComponent(args.body)}`;
+                    return (
+                        <>
+                            <h3>{t.draftEmail}</h3>
+                            <p><strong>{t.toLabel}</strong> {args.to}</p>
+                            <p><strong>{t.subjectLabel}</strong> {args.subject}</p>
+                            <p><strong>{t.bodyLabel}</strong></p>
+                            <pre style={styles.modalPre}>{args.body}</pre>
+                            <a href={gmailUrl} target="_blank" rel="noopener noreferrer" className="action-button">
+                                {t.openInGmail}
+                            </a>
+                        </>
+                    );
                 case 'create_document':
-                     return <>
-                        <h3 style={styles.modalHeader}>{t.createDocument}</h3>
-                        <div>
+                    const handleOpenDocs = () => {
+                        navigator.clipboard.writeText(args.content);
+                        window.open('https://docs.google.com/document/create', '_blank', 'noopener,noreferrer');
+                    };
+                    return (
+                        <>
+                            <h3>{t.createDocument}</h3>
                             <p>{t.createDocInfo}</p>
-                            <label style={styles.modalFormLabel}>{t.suggestedTitle}</label>
-                            <input type="text" name="title" value={formData.title || ''} onChange={handleChange} style={styles.modalInput} />
-                             <label style={styles.modalFormLabel}>{t.suggestedContent}</label>
-                            <textarea name="content" value={formData.content || ''} onChange={handleChange} style={{...styles.modalInput, ...styles.modalTextarea}}></textarea>
-                        </div>
-                        <footer style={styles.modalFooter}>
-                            <button onClick={() => setActionModalData(null)} style={{...styles.modalButton, ...styles.modalSecondaryButton}}>Cancel</button>
-                            <button onClick={handleOpenDocs} style={{...styles.modalButton, ...styles.modalPrimaryButton}}>{t.openGoogleDocs}</button>
-                        </footer>
-                    </>;
-                case 'unknown_action':
+                            <p><strong>{t.suggestedTitle}</strong> {args.title}</p>
+                            <p><strong>{t.suggestedContent}</strong></p>
+                            <pre style={styles.modalPre}>{args.content}</pre>
+                            <button onClick={handleOpenDocs} className="action-button">
+                                {t.openGoogleDocs}
+                            </button>
+                        </>
+                    );
                 default:
-                    return <>
-                        <h3 style={styles.modalHeader}>{t.unknownAction}</h3>
-                        <p>{t.noActionDetermined}</p>
-                        <p><strong>Item:</strong> {sourceItem}</p>
-                         <footer style={styles.modalFooter}>
-                            <button onClick={() => setActionModalData(null)} style={{...styles.modalButton, ...styles.modalSecondaryButton}}>Close</button>
-                        </footer>
-                    </>;
+                    return (
+                        <>
+                            <h3>{t.unknownAction}</h3>
+                            <p>{t.noActionDetermined}</p>
+                        </>
+                    );
             }
         };
 
         return (
-            <div style={styles.modalOverlay} onClick={() => setActionModalData(null)}>
+            <div style={styles.modalBackdrop} onClick={closeModal}>
                 <div style={styles.modalContent} onClick={(e) => e.stopPropagation()}>
-                    {renderContent()}
+                    <button style={styles.modalCloseButton} onClick={closeModal}>&times;</button>
+                    {actionError ? <p style={{color: 'red'}}>{actionError}</p> : renderContent()}
                 </div>
             </div>
         );
     };
     
-
-    // --- Render ---
-    return (
-        <div style={styles.appContainer}>
-            <style>
-                {`
-                @keyframes pulse {
-                    0% { box-shadow: 0 0 0 0 rgba(220, 53, 69, 0.7); }
-                    70% { box-shadow: 0 0 0 10px rgba(220, 53, 69, 0); }
-                    100% { box-shadow: 0 0 0 0 rgba(220, 53, 69, 0); }
-                }
-                .sessionListContainer::-webkit-scrollbar { width: 5px; }
-                .sessionListContainer::-webkit-scrollbar-track { background: transparent; }
-                .sessionListContainer::-webkit-scrollbar-thumb { background: #555; border-radius: 3px; }
-                `}
-            </style>
-            <aside style={styles.sidebar}>
-                <header style={styles.header}>
-                    <h1 style={styles.title}>{t.title}</h1>
-                    <p style={styles.subtitle}>{t.subtitle}</p>
-                </header>
-
-                 <div style={{ marginBottom: '20px' }}>
-                    {!isRecording && (
-                        <button onClick={handleStartRecording} style={styles.recordButton} disabled={isAnalyzing}>
-                            {t.startRecording}
+    const renderControls = () => (
+        <div style={styles.controls}>
+             {isRecording ? (
+                <>
+                    <button onClick={handleStopRecording} style={{...styles.button, ...styles.stopButton}}>
+                        {t.stopRecording} <span style={styles.timer}>{formatTime(recordingTime)}</span>
+                    </button>
+                    {(window as any).documentPictureInPicture && (
+                       <button onClick={togglePip} style={{...styles.button, ...styles.secondaryButton}}>
+                            {t.toggleMiniView}
                         </button>
                     )}
-                    {isRecording && (
-                        <div style={{display: 'flex', flexDirection: 'column', gap: '10px'}}>
-                            <button onClick={() => handleStopRecording()} style={styles.recordButton} disabled={isAnalyzing}>
-                                <span style={styles.recordIcon}>⏹️</span> {t.stopRecording} {formatTime(recordingTime)}
-                            </button>
-                             {(window as any).documentPictureInPicture && (
-                                <button onClick={togglePip} style={styles.secondaryButton}>
-                                    {t.toggleMiniView}
-                                </button>
+                    {'wakeLock' in navigator && (
+                       <div style={styles.keepAwakeToggle} title={t.keepAwakeInfo}>
+                            <input type="checkbox" id="keepAwake" checked={keepAwake} onChange={(e) => setKeepAwake(e.target.checked)} />
+                            <label htmlFor="keepAwake">{t.keepAwake}</label>
+                       </div>
+                    )}
+                </>
+            ) : (
+                <button onClick={handleStartRecording} style={{...styles.button, ...styles.startButton}} disabled={isAnalyzing}>
+                    {isAnalyzing ? t.analyzing : t.startRecording}
+                </button>
+            )}
+             {isAnalyzing && <div style={styles.loader}></div>}
+             {error && <p style={styles.error}>{error}</p>}
+        </div>
+    );
+    
+    const renderSessionList = () => (
+         <div style={styles.sessionList}>
+            <h2 style={styles.listHeader}>{t.recentSessions}</h2>
+            <input
+                type="text"
+                placeholder={t.searchPlaceholder}
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                style={styles.searchInput}
+                disabled={isRecording}
+            />
+            {filteredSessions.map(session => (
+                <div
+                    key={session.id}
+                    style={{
+                        ...styles.sessionCard,
+                        ...(activeSession?.id === session.id ? styles.activeSessionCard : {}),
+                        ...(isRecording ? { cursor: 'not-allowed', opacity: 0.6 } : {})
+                    }}
+                    onClick={() => handleSessionSelect(session)}
+                >
+                    <div style={styles.sessionCardContent}>
+                        <h3 style={styles.sessionTitle}>{session.metadata.title}</h3>
+                        <p style={styles.sessionDate}>{new Date(session.metadata.date).toLocaleDateString()}</p>
+                    </div>
+                    <button
+                        style={styles.deleteButton}
+                        onClick={(e) => {
+                            e.stopPropagation();
+                            handleDeleteSession(session.id);
+                        }}
+                         disabled={isRecording}
+                    >
+                        🗑️
+                    </button>
+                </div>
+            ))}
+            {sessions.length === 0 && !isRecording && !isAnalyzing && (
+                 <div style={styles.welcomeContainer}>
+                    <h3>{t.welcomeMessage}</h3>
+                    <p>{t.welcomeSubtext}</p>
+                </div>
+            )}
+        </div>
+    );
+    
+     const renderSessionDetail = () => (
+        <div style={styles.sessionDetail}>
+            {activeSession ? (
+                <>
+                    {isMobileView && (
+                        <button onClick={() => setActiveSession(null)} style={styles.backButton}>
+                            &larr; {t.backToList}
+                        </button>
+                    )}
+                    <div style={styles.detailHeader}>
+                        <h2 style={styles.detailTitle}>{activeSession.metadata.title}</h2>
+                        <div style={styles.metadata}>
+                            <span>{new Date(activeSession.metadata.date).toLocaleString()}</span>
+                            {activeSession.metadata.location !== t.locationUnavailable ? (
+                                <a href={activeSession.metadata.mapUrl} target="_blank" rel="noopener noreferrer">
+                                    {activeSession.metadata.location}
+                                </a>
+                            ) : (
+                                <span>{activeSession.metadata.location}</span>
                             )}
                         </div>
-
-                    )}
-                    {isAnalyzing && <div style={styles.loader}>{t.analyzing}</div>}
-                    {error && <div style={styles.error}>{error}</div>}
-                </div>
-
-                <input
-                    type="text"
-                    placeholder={t.searchPlaceholder}
-                    style={styles.searchBox}
-                    value={searchTerm}
-                    onChange={(e) => setSearchTerm(e.target.value)}
-                    disabled={isRecording}
-                />
-
-                <h2 style={styles.sessionListHeader}>{t.recentSessions}</h2>
-                <div style={styles.sessionListContainer}>
-                    {filteredSessions.map(session => (
-                        <div key={session.id} style={activeSessionStyle(session)} onClick={() => handleSessionSelect(session)}>
-                            <div style={styles.sessionTitle}>{session.metadata.title}</div>
-                            <div style={styles.sessionDate}>{new Date(session.metadata.date).toLocaleString()}</div>
-                        </div>
-                    ))}
-                </div>
-                <footer style={styles.footer}>{t.footerText}</footer>
-            </aside>
-
-            <main style={styles.mainContent}>
-                <ActionModal />
-                {showCopiedMessage && <div style={styles.copiedPopup}>{t.copiedSuccess}</div>}
-
-                {activeSession ? (
-                    <div style={styles.sessionView}>
-                        <div style={styles.topControls}>
-                            <button style={styles.controlButton} onClick={copyAsMarkdown} title={t.copyMarkdown}>
-                                📋 <span className="hide-mobile">{t.copyMarkdown}</span>
+                         <div style={styles.exportControls}>
+                            <button onClick={copyAsMarkdown} style={{...styles.button, ...styles.secondaryButton}}>
+                                {showCopiedMessage ? t.copiedSuccess : t.copyMarkdown}
                             </button>
-                            <button style={styles.controlButton} onClick={downloadAsMarkdown} title={t.downloadMarkdown}>
-                                💾 <span className="hide-mobile">{t.downloadMarkdown}</span>
+                            <button onClick={downloadAsMarkdown} style={{...styles.button, ...styles.secondaryButton}}>
+                                {t.downloadMarkdown}
                             </button>
-                            <button style={{...styles.controlButton, ...styles.deleteButton}} onClick={() => handleDeleteSession(activeSession.id)} title={t.deleteSession}>
-                                🗑️
-                            </button>
-                        </div>
-                        <header style={styles.sessionHeader}>
-                            <h2 style={styles.sessionHeaderTitle}>{activeSession.metadata.title}</h2>
-                            <div style={styles.sessionMetadata}>
-                                <div style={styles.metadataItem}>🗓️ {new Date(activeSession.metadata.date).toLocaleString()}</div>
-                                <div style={styles.metadataItem}>
-                                    📍 
-                                    {activeSession.metadata.mapUrl ? 
-                                        <a href={activeSession.metadata.mapUrl} target="_blank" rel="noopener noreferrer" style={styles.locationLink}>{activeSession.metadata.location}</a> :
-                                        activeSession.metadata.location
-                                    }
-                                </div>
-                            </div>
-                        </header>
-
-                        <div style={styles.resultsGrid}>
-                            <div style={styles.card}>
-                                <h3 style={styles.cardHeader}>{t.summaryHeader}</h3>
-                                <div dangerouslySetInnerHTML={{ __html: marked(activeSession.results.summary) }}></div>
-                            </div>
-                            <div style={styles.card}>
-                                <h3 style={styles.cardHeader}>{t.actionItemsHeader}</h3>
-                                {activeSession.results.actionItems.length > 0 ? (
-                                    <ul style={styles.actionList}>
-                                        {activeSession.results.actionItems.map((item, index) => (
-                                            <li key={index} style={styles.actionItem}>
-                                                <span style={{flex: 1}}>{item}</span>
-                                                <button 
-                                                    onClick={() => handleTakeAction(item)}
-                                                    style={{...styles.actionButton, opacity: loadingActionItem === item ? 0.5 : 1}}
-                                                    disabled={loadingActionItem === item}
-                                                >
-                                                     {loadingActionItem === item ? '...' : t.takeAction}
-                                                </button>
-                                            </li>
-                                        ))}
-                                    </ul>
-                                ) : (
-                                    <p>{t.noActionDetermined}</p>
-                                )}
-                                {actionError && <div style={styles.error}>{actionError}</div>}
-                            </div>
-                            
-                            <div style={{...styles.card, ...styles.fullWidthCard}}>
-                                <h3 style={styles.cardHeader}>{t.speakersHeader}</h3>
-                                <div style={styles.speakersList}>
-                                    {Object.entries(activeSession.speakers).map(([id, name]) => (
-                                        <span key={id} style={styles.speakerTag} onClick={() => handleRenameSpeaker(activeSession.id, id)}>
-                                            {name} ✏️
-                                        </span>
-                                    ))}
-                                </div>
-                            </div>
-
-                            <div style={{ ...styles.card, ...styles.fullWidthCard }}>
-                                <h3 style={styles.cardHeader}>{t.transcriptHeader}</h3>
-                                <div style={styles.transcriptContent} dangerouslySetInnerHTML={{ __html: marked(activeSession.results.transcript) }}></div>
-                            </div>
                         </div>
                     </div>
+                    
+                    <div style={styles.resultsGrid}>
+                        <div style={styles.resultCard}>
+                            <h3>{t.summaryHeader}</h3>
+                            <div dangerouslySetInnerHTML={{ __html: marked(activeSession.results.summary) }} />
+                        </div>
+                        <div style={styles.resultCard}>
+                            <h3>{t.actionItemsHeader}</h3>
+                            <ul>
+                                {activeSession.results.actionItems.map((item, index) => (
+                                    <li key={index} style={styles.actionItem}>
+                                        <span>{item}</span>
+                                        <button 
+                                            onClick={() => handleTakeAction(item)} 
+                                            style={styles.takeActionButton}
+                                            disabled={loadingActionItem === item}>
+                                                {loadingActionItem === item ? '...' : t.takeAction}
+                                        </button>
+                                    </li>
+                                ))}
+                            </ul>
+                        </div>
+                         <div style={styles.resultCard}>
+                             <h3>{t.speakersHeader}</h3>
+                            <ul>
+                                {Object.entries(activeSession.speakers).map(([id, name]) => (
+                                    <li key={id} style={styles.speakerItem}>
+                                        <span>{id}: {name}</span>
+                                        <button onClick={() => handleRenameSpeaker(activeSession.id, id)} style={styles.renameButton}>✏️</button>
+                                    </li>
+                                ))}
+                            </ul>
+                        </div>
+                        <div style={{...styles.resultCard, ...styles.transcriptCard}}>
+                            <h3>{t.transcriptHeader}</h3>
+                            <pre style={styles.transcript}>{activeSession.results.transcript}</pre>
+                        </div>
+                    </div>
+                </>
+            ) : (
+                <div style={styles.welcomeContainer}>
+                    {!isMobileView && <h2>{t.welcomeMessage}</h2>}
+                    {!isMobileView && <p>{t.welcomeSubtext}</p>}
+                </div>
+            )}
+        </div>
+    );
+
+
+    // --- Main Render ---
+    return (
+        <div style={styles.appContainer}>
+            <header style={styles.header}>
+                <h1 style={styles.title}>{t.title}</h1>
+                <p style={styles.subtitle}>{t.subtitle}</p>
+            </header>
+
+            {!isMobileView && renderControls()}
+            
+            <main style={{
+                ...styles.mainContent,
+                // Fix: Apply mobile styles conditionally based on isMobileView state.
+                // React's inline styles do not support media queries directly.
+                ...(isMobileView && {
+                    display: 'block',
+                    padding: '1rem',
+                    gridTemplateColumns: '1fr', // Replicates original media query behavior
+                })
+            }}>
+                {isMobileView ? (
+                    activeSession ? renderSessionDetail() : renderSessionList()
                 ) : (
-                    <div style={styles.welcomeView}>
-                         <div style={styles.welcomeLogo}>🗒️</div>
-                        <h2 style={styles.welcomeHeader}>{t.welcomeMessage}</h2>
-                        <p style={styles.welcomeSubtext}>{t.welcomeSubtext}</p>
-                    </div>
+                    <>
+                        {renderSessionList()}
+                        {renderSessionDetail()}
+                    </>
                 )}
             </main>
+            
+            {isMobileView && (
+                <div style={styles.mobileControlsContainer}>
+                    {isRecording || isAnalyzing ? renderControls() : (
+                        <button onClick={handleStartRecording} style={styles.fab} disabled={isAnalyzing}>
+                             🎤
+                        </button>
+                    )}
+                </div>
+            )}
+            
+            {renderActionModal()}
+
+            <footer style={styles.footer}>
+                <p>{t.footerText}</p>
+            </footer>
         </div>
     );
 };
 
-const root = createRoot(document.getElementById('root') as HTMLElement);
+// --- Styles ---
+const styles: { [key: string]: CSSProperties } = {
+    appContainer: {
+        fontFamily: "'Poppins', sans-serif",
+        backgroundColor: isDarkMode ? '#121212' : '#F7F9FC',
+        color: isDarkMode ? '#E0E0E0' : '#202124',
+        minHeight: '100vh',
+        display: 'flex',
+        flexDirection: 'column',
+    },
+    header: {
+        textAlign: 'center',
+        padding: '2rem 1rem 1rem',
+        borderBottom: `1px solid ${isDarkMode ? '#333' : '#E0E0E0'}`,
+    },
+    title: {
+        margin: 0,
+        fontSize: '2.5rem',
+        fontWeight: 700,
+        color: '#00A99D',
+    },
+    subtitle: {
+        margin: '0.25rem 0 0',
+        fontSize: '1rem',
+        color: isDarkMode ? '#999' : '#5F6368',
+    },
+    controls: {
+        display: 'flex',
+        justifyContent: 'center',
+        alignItems: 'center',
+        padding: '1rem',
+        gap: '1rem',
+        flexWrap: 'wrap',
+    },
+    button: {
+        padding: '0.75rem 1.5rem',
+        fontSize: '1rem',
+        fontWeight: 600,
+        borderRadius: '50px',
+        border: 'none',
+        cursor: 'pointer',
+        transition: 'all 0.2s ease',
+        display: 'flex',
+        alignItems: 'center',
+        gap: '0.5rem',
+    },
+    startButton: {
+        backgroundColor: '#00A99D',
+        color: 'white',
+        boxShadow: '0 4px 15px rgba(0, 169, 157, 0.2)',
+    },
+    stopButton: {
+        backgroundColor: '#D9534F',
+        color: 'white',
+        boxShadow: '0 4px 15px rgba(217, 83, 79, 0.2)',
+    },
+    secondaryButton: {
+        backgroundColor: isDarkMode ? '#333' : '#e0e0e0',
+        color: isDarkMode ? '#fff' : '#333',
+    },
+    timer: {
+        fontFamily: 'monospace',
+        fontSize: '1rem',
+        backgroundColor: 'rgba(0,0,0,0.2)',
+        padding: '0.2rem 0.5rem',
+        borderRadius: '5px',
+    },
+    keepAwakeToggle: {
+        display: 'flex',
+        alignItems: 'center',
+        gap: '0.5rem',
+        fontSize: '0.9rem',
+        cursor: 'pointer',
+    },
+    error: {
+        color: '#D9534F',
+        textAlign: 'center',
+        width: '100%',
+    },
+    loader: {
+        border: `4px solid ${isDarkMode ? '#555' : '#f3f3f3'}`,
+        borderTop: '4px solid #00A99D',
+        borderRadius: '50%',
+        width: '24px',
+        height: '24px',
+        animation: 'spin 1s linear infinite',
+    },
+    mainContent: {
+        flex: 1,
+        display: 'grid',
+        gridTemplateColumns: '350px 1fr',
+        gap: '1.5rem',
+        padding: '1.5rem',
+        overflow: 'hidden',
+    },
+    sessionList: {
+        backgroundColor: isDarkMode ? '#1E1E1E' : '#FFFFFF',
+        borderRadius: '12px',
+        padding: '1rem',
+        overflowY: 'auto',
+        display: 'flex',
+        flexDirection: 'column',
+        gap: '0.5rem',
+        border: `1px solid ${isDarkMode ? '#333' : '#E0E0E0'}`,
+    },
+    listHeader: {
+        margin: '0 0 1rem 0',
+        fontSize: '1.25rem',
+    },
+    searchInput: {
+        width: '100%',
+        padding: '0.75rem',
+        borderRadius: '8px',
+        border: `1px solid ${isDarkMode ? '#444' : '#ccc'}`,
+        backgroundColor: isDarkMode ? '#222' : '#fff',
+        color: isDarkMode ? '#fff' : '#000',
+        boxSizing: 'border-box',
+        marginBottom: '0.5rem',
+    },
+    sessionCard: {
+        padding: '1rem',
+        borderRadius: '8px',
+        cursor: 'pointer',
+        transition: 'background-color 0.2s, box-shadow 0.2s',
+        border: `1px solid ${isDarkMode ? '#333' : '#E0E0E0'}`,
+        display: 'flex',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+    },
+    activeSessionCard: {
+        backgroundColor: 'rgba(0, 169, 157, 0.1)',
+        borderColor: '#00A99D',
+        boxShadow: '0 0 10px rgba(0, 169, 157, 0.2)',
+    },
+    sessionCardContent: {
+        flex: 1,
+    },
+    sessionTitle: {
+        margin: 0,
+        fontSize: '1rem',
+        fontWeight: 600,
+    },
+    sessionDate: {
+        margin: '0.25rem 0 0',
+        fontSize: '0.8rem',
+        color: '#999',
+    },
+    deleteButton: {
+        background: 'none',
+        border: 'none',
+        cursor: 'pointer',
+        fontSize: '1.2rem',
+        padding: '0.5rem',
+        borderRadius: '50%',
+        transition: 'background-color 0.2s',
+    },
+    sessionDetail: {
+        backgroundColor: isDarkMode ? '#1E1E1E' : '#FFFFFF',
+        borderRadius: '12px',
+        padding: '2rem',
+        overflowY: 'auto',
+        border: `1px solid ${isDarkMode ? '#333' : '#E0E0E0'}`,
+    },
+    detailHeader: {
+        borderBottom: `1px solid ${isDarkMode ? '#333' : '#E0E0E0'}`,
+        paddingBottom: '1rem',
+        marginBottom: '1.5rem',
+    },
+    detailTitle: {
+        margin: 0,
+        fontSize: '1.75rem',
+    },
+    metadata: {
+        display: 'flex',
+        gap: '1rem',
+        color: '#999',
+        fontSize: '0.9rem',
+        marginTop: '0.5rem',
+        flexWrap: 'wrap',
+    },
+    exportControls: {
+        marginTop: '1rem',
+        display: 'flex',
+        gap: '0.5rem',
+    },
+    resultsGrid: {
+        display: 'grid',
+        gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))',
+        gap: '1.5rem',
+    },
+    resultCard: {
+        backgroundColor: isDarkMode ? '#252525' : '#F7F9FC',
+        padding: '1.5rem',
+        borderRadius: '12px',
+    },
+    transcriptCard: {
+        gridColumn: '1 / -1',
+    },
+    transcript: {
+        whiteSpace: 'pre-wrap',
+        wordWrap: 'break-word',
+        maxHeight: '400px',
+        overflowY: 'auto',
+        backgroundColor: isDarkMode ? '#111' : '#EEE',
+        padding: '1rem',
+        borderRadius: '8px',
+    },
+    actionItem: {
+        display: 'flex',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        gap: '1rem',
+        marginBottom: '0.5rem',
+    },
+    speakerItem: {
+        display: 'flex',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        gap: '1rem',
+        marginBottom: '0.5rem',
+    },
+    renameButton: {
+        background: 'none',
+        border: 'none',
+        cursor: 'pointer',
+        fontSize: '1rem',
+    },
+    takeActionButton: {
+        backgroundColor: 'rgba(0, 169, 157, 0.2)',
+        color: '#00A99D',
+        border: 'none',
+        borderRadius: '20px',
+        padding: '0.3rem 0.8rem',
+        fontSize: '0.8rem',
+        fontWeight: 600,
+        cursor: 'pointer',
+        flexShrink: 0,
+    },
+    welcomeContainer: {
+        textAlign: 'center',
+        padding: '4rem 1rem',
+        color: '#999',
+    },
+    modalBackdrop: {
+        position: 'fixed',
+        top: 0,
+        left: 0,
+        width: '100%',
+        height: '100%',
+        backgroundColor: 'rgba(0, 0, 0, 0.7)',
+        display: 'flex',
+        justifyContent: 'center',
+        alignItems: 'center',
+        zIndex: 1000,
+    },
+    modalContent: {
+        backgroundColor: isDarkMode ? '#282828' : 'white',
+        padding: '2rem',
+        borderRadius: '12px',
+        width: '90%',
+        maxWidth: '500px',
+        position: 'relative',
+    },
+    modalCloseButton: {
+        position: 'absolute',
+        top: '10px',
+        right: '15px',
+        background: 'none',
+        border: 'none',
+        fontSize: '1.5rem',
+        cursor: 'pointer',
+        color: isDarkMode ? '#aaa' : '#555',
+    },
+    modalPre: {
+        whiteSpace: 'pre-wrap',
+        wordWrap: 'break-word',
+        maxHeight: '200px',
+        overflowY: 'auto',
+        backgroundColor: isDarkMode ? '#1E1E1E' : '#f0f0f0',
+        padding: '0.5rem',
+        borderRadius: '4px',
+    },
+    footer: {
+        textAlign: 'center',
+        padding: '1rem',
+        fontSize: '0.8rem',
+        color: isDarkMode ? '#666' : '#999',
+        borderTop: `1px solid ${isDarkMode ? '#333' : '#E0E0E0'}`,
+    },
+    // Mobile specific
+    mobileControlsContainer: {
+        position: 'sticky',
+        bottom: 0,
+        left: 0,
+        right: 0,
+        padding: '1rem',
+        backgroundColor: isDarkMode ? 'rgba(18, 18, 18, 0.9)' : 'rgba(247, 249, 252, 0.9)',
+        backdropFilter: 'blur(10px)',
+        borderTop: `1px solid ${isDarkMode ? '#333' : '#E0E0E0'}`,
+    },
+    fab: {
+        position: 'fixed',
+        bottom: '2rem',
+        right: '2rem',
+        width: '60px',
+        height: '60px',
+        borderRadius: '50%',
+        backgroundColor: '#00A99D',
+        color: 'white',
+        border: 'none',
+        fontSize: '2rem',
+        display: 'flex',
+        justifyContent: 'center',
+        alignItems: 'center',
+        boxShadow: '0 4px 15px rgba(0, 169, 157, 0.4)',
+        cursor: 'pointer',
+        zIndex: 999,
+    },
+    backButton: {
+        background: 'none',
+        border: 'none',
+        color: '#00A99D',
+        fontSize: '1rem',
+        cursor: 'pointer',
+        marginBottom: '1rem',
+    }
+};
+
+const keyframes = `
+@keyframes spin {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
+}
+
+/* Specific overrides for modal buttons */
+.action-button {
+    display: inline-block;
+    margin-top: 1rem;
+    padding: 0.75rem 1.5rem;
+    font-size: 1rem;
+    font-weight: 600;
+    border-radius: 50px;
+    border: none;
+    cursor: pointer;
+    background-color: #00A99D;
+    color: white !important;
+    text-decoration: none;
+    text-align: center;
+}
+`;
+const styleSheet = document.createElement("style");
+styleSheet.innerText = keyframes;
+document.head.appendChild(styleSheet);
+
+
+const root = createRoot(document.getElementById('root')!);
 root.render(<App />);
