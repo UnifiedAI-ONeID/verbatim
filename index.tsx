@@ -1,3 +1,4 @@
+
 import React, { useState, useRef, CSSProperties, useEffect, useCallback } from 'react';
 import { createRoot } from 'react-dom/client';
 import { GoogleGenAI, Type, FunctionDeclaration } from "@google/genai";
@@ -382,6 +383,25 @@ const generateSessionId = () => `session_${new Date().toISOString()}`;
 const isDarkMode = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
 
 // --- Gemini Tool Declarations ---
+const analysisResponseSchema = {
+  type: Type.OBJECT,
+  properties: {
+    summary: { type: Type.STRING, description: 'A concise summary of the meeting.' },
+    actionItems: {
+      type: Type.ARRAY,
+      items: { type: Type.STRING },
+      description: 'A list of action items from the meeting.'
+    },
+    transcript: { type: Type.STRING, description: 'The full transcript of the meeting with speaker labels.' },
+    speakers: {
+      type: Type.ARRAY,
+      items: { type: Type.STRING },
+      description: 'A list of identified speaker labels (e.g., "Speaker 1").'
+    }
+  },
+  required: ['summary', 'actionItems', 'transcript', 'speakers'],
+};
+
 const createCalendarEventTool: FunctionDeclaration = {
   name: 'create_calendar_event',
   description: 'Creates a Google Calendar event from the provided details.',
@@ -589,13 +609,14 @@ const App: React.FC = () => {
             
              const response = await ai.models.generateContent({
                  model: 'gemini-2.5-flash',
-                 contents: [{ parts: [
+                 contents: { parts: [
                      {text: "Analyze this meeting audio."},
                      {inlineData: { mimeType: 'audio/webm', data: audioData }}
-                 ]}],
+                 ]},
                  config: {
                     systemInstruction,
-                    responseMimeType: 'application/json'
+                    responseMimeType: 'application/json',
+                    responseSchema: analysisResponseSchema,
                  }
             });
 
@@ -773,7 +794,7 @@ const App: React.FC = () => {
 
             const response = await ai.models.generateContent({
                 model: 'gemini-2.5-flash',
-                contents: [{ parts: [{ text: promptText }] }],
+                contents: promptText,
                 config: {
                     tools: [{ functionDeclarations: [createCalendarEventTool, draftEmailTool, createDocumentTool] }],
                 },
