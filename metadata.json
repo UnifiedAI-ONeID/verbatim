@@ -1,0 +1,8 @@
+{
+  "description": "An AI Meeting Co-Pilot with a persistent dashboard. It records audio and uses Gemini to generate transcripts, summaries, and action items for multiple sessions.",
+  "requestFramePermissions": [
+    "microphone",
+    "geolocation"
+  ],
+  "name": "App"
+}
