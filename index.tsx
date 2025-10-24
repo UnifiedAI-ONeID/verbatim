@@ -14,6 +14,8 @@ type MeetingResults = { transcript: string; summary: string; actionItems: string
 type MeetingMetadata = { title: string; date: string; location: string; mapUrl: string; };
 type Session = { id: string; metadata: MeetingMetadata; results: MeetingResults; speakers: Record<string, string>; };
 type ActionModalData = { type: string; args?: any; sourceItem?: string; };
+type User = { name: string; email: string; };
+type EditingSpeaker = { sessionId: string; speakerId: string };
 
 
 // --- i18n Translations ---
@@ -21,11 +23,14 @@ const translations = {
     en: {
         title: 'Verbatim',
         subtitle: 'Your intelligent meeting dashboard.',
+        welcomeUser: 'Welcome, {name}',
         startRecording: '🎤 New Session',
         stopRecording: '⏹️ Stop Recording',
         analyzing: 'Analyzing...',
         micPermissionError: 'Could not start recording. Please grant microphone permissions.',
-        processingError: 'Failed to process audio. Please try again.',
+        processingError: 'Failed to process audio. This can happen due to a poor network connection, a very short recording, or if the audio is silent. Please try again.',
+        offlineError: 'Analysis requires an internet connection. Please connect and try again.',
+        recordingTooShortError: 'Recording is too short to analyze. Please record for at least 2 seconds.',
         transcriptHeader: '📋 Transcript',
         summaryHeader: '✨ Key Summary',
         actionItemsHeader: '📌 Action Items',
@@ -88,12 +93,11 @@ const translations = {
         createdBy: 'Created by',
         creatorName: 'Simon Luke',
         creatorEmail: 'simon.luke@impactoryinstitute.com',
+        dedication: 'Lovingly dedicated to my family, all the busy moms out there, and the creator. ❤️',
         featureList: [
             'Multilingual AI Analysis',
             'Automatic Summary & Action Items',
             'Full Transcription with Speaker Labels',
-            'Hands-Free Driving Mode with Voice Commands',
-            'Pause/Resume Recording',
             'One-Click Actions (Calendar, Gmail, Docs)',
             'Markdown Export & Copy',
             'Picture-in-Picture Mini View',
@@ -104,15 +108,64 @@ const translations = {
         consentInternalUse: 'I acknowledge this application is for internal Impactory Institute use only.',
         consentNoCopy: 'I agree not to copy or distribute this application without permission.',
         consentContinue: 'Accept & Continue',
+        loginTitle: 'Create Your Account',
+        loginSubtitle: 'Save and manage your sessions by creating a free account.',
+        nameLabel: 'Full Name',
+        emailLabel: 'Email',
+        continueButton: 'Continue',
+        twoFactorTitle: 'Two-Factor Authentication',
+        twoFactorSubtitle: 'For your security, please enter the code sent to {email}.',
+        twoFactorCodeLabel: 'Your verification code is:',
+        verifyButton: 'Verify & Login',
+        invalidCodeError: 'Invalid code. Please try again.',
+        faqLink: 'FAQ',
+        faqTitle: 'Frequently Asked Questions',
+        faq: [
+            {
+                q: 'What\'s new in this version (Beta v1.1)?',
+                a: 'This version focuses on hardening the app for a more robust and reliable experience. We\'ve improved offline capabilities, refined error handling, and polished the user interface with smoother animations and a more intuitive speaker renaming flow. The app is now faster and more resilient.',
+            },
+            {
+                q: 'How do I start a new recording?',
+                a: 'Click the "🎤 New Session" button. If it\'s your first time, you\'ll be asked to create an account. Then, you\'ll be prompted to select your preferred microphone. Once you click "Start," the recording will begin immediately.',
+            },
+            {
+                q: 'Can Verbatim understand different languages in the same meeting?',
+                a: 'Yes! Verbatim is powered by a multilingual AI that can process audio containing multiple languages. All final outputs, including the summary, action items, and transcript, will be translated into and presented in your browser\'s default language (English, Spanish, or Chinese).',
+            },
+            {
+                q: 'How are speakers identified and can I change their names?',
+                a: 'The AI automatically distinguishes between different speakers and labels them as "Speaker 1," etc. After analysis, click the pencil icon (✏️) next to a speaker\'s name. The name becomes an editable field. Type the new name and press Enter or click away to save. This updates the name throughout the transcript.',
+            },
+            {
+                q: 'What are "One-Click Actions"?',
+                a: 'For each action item identified by the AI, you can click the "Take Action ✨" button. The AI will determine the best tool for the task (like creating a calendar event, drafting an email, or starting a document) and pre-fill the necessary information for you.',
+            },
+            {
+                q: 'How can I use the recording controls while in another window?',
+                a: 'While recording on a desktop browser, click the "Toggle Mini View" button. This will open a small Picture-in-Picture window with a timer and a "Stop" button, which stays on top of your other windows so you can easily control the recording.',
+            },
+            {
+                q: 'Does the app work offline?',
+                a: 'Yes. Verbatim is a Progressive Web App (PWA). After your first visit, you can install it on your device for an app-like experience. You can view past sessions even without an internet connection. However, analyzing a new recording requires an internet connection to communicate with the AI.',
+            },
+            {
+                q: 'Where is my data stored?',
+                a: 'All your session data, including audio recordings and analysis results, is stored exclusively in your browser\'s local storage. No data is sent to or stored on any external server, except for the temporary processing of audio by the Gemini API during analysis.',
+            },
+        ],
     },
     es: {
         title: 'Verbatim',
         subtitle: 'Tu panel de reuniones inteligente.',
+        welcomeUser: 'Bienvenido, {name}',
         startRecording: '🎤 Nueva Sesión',
         stopRecording: '⏹️ Detener Grabación',
         analyzing: 'Analizando...',
         micPermissionError: 'No se pudo iniciar la grabación. Por favor, concede permisos para el micrófono.',
-        processingError: 'No se pudo procesar el audio. Por favor, inténtalo de nuevo.',
+        processingError: 'No se pudo procesar el audio. Esto puede ocurrir por una mala conexión de red, una grabación muy corta o si el audio está en silencio. Por favor, inténtalo de nuevo.',
+        offlineError: 'El análisis requiere una conexión a internet. Por favor, conéctate y vuelve a intentarlo.',
+        recordingTooShortError: 'La grabación es demasiado corta para analizar. Por favor, graba durante al menos 2 segundos.',
         transcriptHeader: '📋 Transcripción',
         summaryHeader: '✨ Resumen Clave',
         actionItemsHeader: '📌 Puntos de Acción',
@@ -175,12 +228,11 @@ const translations = {
         createdBy: 'Creado por',
         creatorName: 'Simon Luke',
         creatorEmail: 'simon.luke@impactoryinstitute.com',
+        dedication: 'Dedicado con amor a mi familia, a todas las mamás ocupadas y al creador. ❤️',
         featureList: [
             'Análisis IA Multilingüe',
             'Resumen y Acciones Automáticas',
             'Transcripción Completa con Oradores',
-            'Modo Conducción Manos Libres con Voz',
-            'Pausar/Reanudar Grabación',
             'Acciones en Un Clic (Calendar, Gmail, Docs)',
             'Exportar y Copiar en Markdown',
             'Mini Vista Picture-in-Picture',
@@ -191,15 +243,64 @@ const translations = {
         consentInternalUse: 'Reconozco que esta aplicación es para uso interno exclusivo del Impactory Institute.',
         consentNoCopy: 'Acepto no copiar ni distribuir esta aplicación sin permiso.',
         consentContinue: 'Aceptar y Continuar',
+        loginTitle: 'Crear Cuenta',
+        loginSubtitle: 'Guarda y gestiona tus sesiones creando una cuenta gratuita.',
+        nameLabel: 'Nombre Completo',
+        emailLabel: 'Correo Electrónico',
+        continueButton: 'Continuar',
+        twoFactorTitle: 'Autenticación de Dos Factores',
+        twoFactorSubtitle: 'Por tu seguridad, ingresa el código enviado a {email}.',
+        twoFactorCodeLabel: 'Tu código de verificación es:',
+        verifyButton: 'Verificar e Iniciar Sesión',
+        invalidCodeError: 'Código no válido. Por favor, inténtalo de nuevo.',
+        faqLink: 'FAQ',
+        faqTitle: 'Preguntas Frecuentes',
+        faq: [
+             {
+                q: '¿Qué hay de nuevo en esta versión (Beta v1.1)?',
+                a: 'Esta versión se centra en fortalecer la aplicación para una experiencia más robusta y fiable. Hemos mejorado las capacidades sin conexión, refinado el manejo de errores y pulido la interfaz de usuario con animaciones más suaves y un flujo de cambio de nombre de orador más intuitivo. La aplicación es ahora más rápida y resistente.',
+            },
+            {
+                q: '¿Cómo inicio una nueva grabación?',
+                a: 'Haz clic en el botón "🎤 Nueva Sesión". Si es tu primera vez, se te pedirá que crees una cuenta. Luego, se te pedirá que selecciones tu micrófono preferido. Una vez que hagas clic en "Comenzar", la grabación se iniciará de inmediato.',
+            },
+            {
+                q: '¿Puede Verbatim entender diferentes idiomas en la misma reunión?',
+                a: '¡Sí! Verbatim cuenta con una IA multilingüe que puede procesar audio que contenga varios idiomas. Todos los resultados finales, incluyendo el resumen, los puntos de acción y la transcripción, se traducirán y presentarán en el idioma predeterminado de tu navegador (inglés, español o chino).',
+            },
+            {
+                q: '¿Cómo se identifican los oradores y puedo cambiar sus nombres?',
+                a: 'La IA distingue automáticamente entre diferentes oradores y los etiqueta como "Orador 1", etc. Después del análisis, haz clic en el ícono de lápiz (✏️) junto al nombre de un orador. El nombre se convertirá en un campo editable. Escribe el nuevo nombre y presiona Enter o haz clic fuera para guardar. Esto actualizará el nombre en toda la transcripción.',
+            },
+            {
+                q: '¿Qué son las "Acciones en Un Clic"?',
+                a: 'Para cada punto de acción identificado por la IA, puedes hacer clic en el botón "Tomar Acción ✨". La IA determinará la mejor herramienta para la tarea (como crear un evento de calendario, redactar un correo electrónico o iniciar un documento) y rellenará previamente la información necesaria por ti.',
+            },
+            {
+                q: '¿Cómo puedo usar los controles de grabación mientras estoy en otra ventana?',
+                a: 'Mientras grabas en un navegador de escritorio, haz clic en el botón "Alternar Mini Vista". Esto abrirá una pequeña ventana Picture-in-Picture con un temporizador y un botón de "Detener", que permanecerá encima de tus otras ventanas para que puedas controlar fácilmente la grabación.',
+            },
+            {
+                q: '¿La aplicación funciona sin conexión?',
+                a: 'Sí. Verbatim es una Aplicación Web Progresiva (PWA). Después de tu primera visita, puedes instalarla en tu dispositivo para una experiencia similar a la de una aplicación. Puedes ver las sesiones pasadas incluso sin conexión a internet. Sin embargo, analizar una nueva grabación requiere una conexión a internet para comunicarse con la IA.',
+            },
+            {
+                q: '¿Dónde se almacenan mis datos?',
+                a: 'Todos los datos de tu sesión, incluidas las grabaciones de audio y los resultados del análisis, se almacenan exclusivamente en el almacenamiento local de tu navegador. Ningún dato se envía o almacena en ningún servidor externo, excepto para el procesamiento temporal del audio por la API de Gemini durante el análisis.',
+            },
+        ],
     },
     'zh-CN': {
         title: 'Verbatim',
         subtitle: '您的智能会议仪表板。',
+        welcomeUser: '欢迎，{name}',
         startRecording: '🎤 新建会话',
         stopRecording: '⏹️ 停止录音',
         analyzing: '正在分析...',
         micPermissionError: '无法开始录音。请授予麦克风权限。',
-        processingError: '处理音频失败。请重试。',
+        processingError: '处理音频失败。这可能是由于网络连接不佳、录音时间过短或音频无声。请重试。',
+        offlineError: '分析需要网络连接。请连接网络后重试。',
+        recordingTooShortError: '录音时间太短，无法分析。请至少录制2秒。',
         transcriptHeader: '📋 文字记录',
         summaryHeader: '✨ 核心摘要',
         actionItemsHeader: '📌 行动项',
@@ -262,12 +363,11 @@ const translations = {
         createdBy: '创建者',
         creatorName: 'Simon Luke',
         creatorEmail: 'simon.luke@impactoryinstitute.com',
+        dedication: '谨此献给我的家人、所有忙碌的妈妈们，以及创作者。❤️',
         featureList: [
             '多语言 AI 分析',
             '自动生成摘要与行动项',
             '带发言人标签的完整转录',
-            '语音控制免提驾驶模式',
-            '暂停/继续录音',
             '一键操作 (日历, Gmail, 文档)',
             'Markdown 导出与复制',
             '画中画迷你视图',
@@ -278,15 +378,64 @@ const translations = {
         consentInternalUse: '我确认此应用程序仅供 Impactory Institute 内部使用。',
         consentNoCopy: '我同意未经许可不会复制或分发此应用程序。',
         consentContinue: '接受并继续',
+        loginTitle: '创建账户',
+        loginSubtitle: '创建免费账户以保存和管理您的会话。',
+        nameLabel: '全名',
+        emailLabel: '电子邮箱',
+        continueButton: '继续',
+        twoFactorTitle: '双因素认证',
+        twoFactorSubtitle: '为了您的安全，请输入已发送至 {email} 的验证码。',
+        twoFactorCodeLabel: '您的验证码是：',
+        verifyButton: '验证并登录',
+        invalidCodeError: '代码无效。请重试。',
+        faqLink: '常见问题',
+        faqTitle: '常见问题',
+        faq: [
+            {
+                q: '此版本（Beta v1.1）有哪些新功能？',
+                a: '此版本专注于强化应用程序，以提供更强大、更可靠的体验。我们改进了离线功能，优化了错误处理，并通过更流畅的动画和更直观的发言人重命名流程打磨了用户界面。该应用程序现在更快、更有弹性。',
+            },
+            {
+                q: '如何开始新的录音？',
+                a: '点击“🎤 新建会话”按钮。如果是您第一次使用，系统会要求您创建一个帐户。然后，系统会提示您选择首选的麦克风。点击“开始”后，录音将立即开始。',
+            },
+            {
+                q: 'Verbatim 能否在同一次会议中理解不同的语言？',
+                a: '是的！Verbatim 由一个多语言人工智能驱动，可以处理包含多种语言的音频。所有最终输出，包括摘要、行动项和文字记录，都将被翻译成并以您的浏览器默认语言（英语、西班牙语或中文）呈现。',
+            },
+            {
+                q: '发言人是如何被识别的？我可以更改他们的名字吗？',
+                a: '人工智能会自动区分不同的发言人，并将他们标记为“发言人 1”等。分析完成后，您可以在“发言人”卡片中点击每个发言人姓名旁边的铅笔图标（✏️）。姓名将变为可编辑字段。输入新名称后按 Enter 键或点击旁边空白处即可保存。这将在整个文字记录中更新该名称。',
+            },
+            {
+                q: '什么是“一键操作”？',
+                a: '对于人工智能识别的每个行动项，您可以点击“执行操作 ✨”按钮。人工智能将为该任务确定最佳工具（如创建日历活动、草拟电子邮件或创建文档），并为您预先填写必要的信息。',
+            },
+            {
+                q: '当我使用其他窗口时，如何控制录音？',
+                a: '在桌面浏览器上录音时，点击“切换迷你视图”按钮。这会打开一个小的画中画窗口，其中包含一个计时器和一个“停止”按钮，该窗口会保持在其他窗口的顶部，方便您控制录音。',
+            },
+            {
+                q: '这个应用可以离线使用吗？',
+                a: '是的。Verbatim 是一个渐进式网络应用（PWA）。首次访问后，您可以将其安装到您的设备上，以获得类似应用的体验。即使没有互联网连接，您也可以查看过去的会话。但是，分析新的录音需要互联网连接才能与人工智能通信。',
+            },
+            {
+                q: '我的数据存储在哪里？',
+                a: '您所有的会话数据，包括录音和分析结果，都只存储在您浏览器的本地存储中。除了在分析过程中由 Gemini API 临时处理音频外，不会有任何数据发送到或存储在任何外部服务器上。',
+            },
+        ],
     },
     'zh-TW': {
         title: 'Verbatim',
         subtitle: '您的智慧會議儀表板。',
+        welcomeUser: '歡迎，{name}',
         startRecording: '🎤 新增會議',
         stopRecording: '⏹️ 停止錄音',
         analyzing: '正在分析...',
         micPermissionError: '無法開始錄音。請授予麥克風權限。',
-        processingError: '處理音訊失敗。請重試。',
+        processingError: '處理音訊失敗。這可能是由於網路連線不佳、錄音時間過短或音訊無聲。請重試。',
+        offlineError: '分析需要網路連線。請連線後重試。',
+        recordingTooShortError: '錄音時間太短，無法分析。請至少錄製2秒。',
         transcriptHeader: '📋 文字記錄',
         summaryHeader: '✨ 核心摘要',
         actionItemsHeader: '📌 行動項目',
@@ -349,12 +498,11 @@ const translations = {
         createdBy: '創建者',
         creatorName: 'Simon Luke',
         creatorEmail: 'simon.luke@impactoryinstitute.com',
+        dedication: '謹此獻給我的家人、所有忙碌的媽媽們，以及創作者。❤️',
         featureList: [
             '多語言 AI 分析',
             '自動生成摘要與行動項目',
             '帶發言人標籤的完整轉錄',
-            '語音控制免提駕駛模式',
-            '暫停/繼續錄音',
             '一鍵操作 (日曆, Gmail, 文件)',
             'Markdown 導出與複製',
             '畫中畫迷你視圖',
@@ -362,9 +510,55 @@ const translations = {
             '音訊源選擇',
         ],
         consentTitle: '重要通知',
-        consentInternalUse: '我確認此應用程式僅供 Impactory Institute 內部使用。',
+        consentInternalUse: '我確認此應用程式僅供 Impactory Institute 内部使用。',
         consentNoCopy: '我同意未經許可不會複製或分發此應用程式。',
         consentContinue: '接受並繼續',
+        loginTitle: '建立帳戶',
+        loginSubtitle: '建立免費帳戶以儲存和管理您的會議。',
+        nameLabel: '全名',
+        emailLabel: '電子郵件',
+        continueButton: '繼續',
+        twoFactorTitle: '雙重驗證',
+        twoFactorSubtitle: '為了您的安全，請輸入已傳送至 {email} 的驗證碼。',
+        twoFactorCodeLabel: '您的驗證碼是：',
+        verifyButton: '驗證並登入',
+        invalidCodeError: '代碼無效。請重試。',
+        faqLink: '常見問題',
+        faqTitle: '常見問題',
+        faq: [
+            {
+                q: '此版本（Beta v1.1）有哪些新功能？',
+                a: '此版本專注於強化應用程式，以提供更強大、更可靠的體驗。我們改進了離線功能，優化了錯誤處理，並透過更流暢的動畫和更直觀的發言人重命名流程打磨了使用者介面。該應用程式現在更快、更有彈性。',
+            },
+            {
+                q: '如何開始新的錄音？',
+                a: '點擊“🎤 新增會議”按鈕。如果是您第一次使用，系統會要求您建立一個帳戶。然後，系統會提示您選擇偏好的麥克風。點擊“開始”後，錄音將立即開始。',
+            },
+            {
+                q: 'Verbatim 能否在同一次會議中理解不同的語言？',
+                a: '是的！Verbatim 由一個多語言 AI 驅動，可以處理包含多種語言的音訊。所有最終輸出，包括摘要、行動項目和文字記錄，都將被翻譯成並以您的瀏覽器預設語言（英文、西班牙文或中文）呈現。',
+            },
+            {
+                q: '發言人是如何被識別的？我可以更改他們的名字嗎？',
+                a: 'AI 會自動區分不同的發言人，並將他們標記為“發言者 1”等。分析完成後，您可以在“發言者”卡片中點擊每個發言人姓名旁邊的鉛筆圖示（✏️）。姓名將變為可編輯欄位。輸入新名稱後按 Enter 鍵或點擊旁邊空白處即可儲存。這將在整個文字記錄中更新該名稱。',
+            },
+            {
+                q: '什麼是“一鍵操作”？',
+                a: '對於 AI 識別的每個行動項目，您可以點擊“執行操作 ✨”按鈕。AI 將為該任務確定最佳工具（如建立日曆活動、草擬電子郵件或建立文件），並為您預先填寫必要的資訊。',
+            },
+            {
+                q: '当我使用其他視窗時，如何控制錄音？',
+                a: '在桌面瀏覽器上錄音時，點擊“切換迷你視圖”按鈕。這會打開一個小的子母畫面視窗，其中包含一個計時器和一個“停止”按鈕，該視窗會保持在其他視窗的頂部，方便您控制錄音。',
+            },
+            {
+                q: '這個應用程式可以離線使用嗎？',
+                a: '是的。Verbatim 是一個漸進式網路應用程式（PWA）。首次訪問後，您可以將其安裝到您的裝置上，以獲得類似應用程式的體驗。即使沒有網路連線，您也可以查看過去的會議。但是，分析新的錄音需要網路連線才能與 AI 通信。',
+            },
+            {
+                q: '我的資料儲存在哪裡？',
+                a: '您所有的會議資料，包括錄音和分析結果，都只儲存在您瀏覽器的本機儲存空間中。除了在分析過程中由 Gemini API 暫時處理音訊外，不會有任何資料傳送到或儲存在任何外部伺服器上。',
+            },
+        ],
     }
 };
 
@@ -397,6 +591,10 @@ const formatTime = (seconds: number) => {
 const generateSessionId = () => `session_${new Date().toISOString()}`;
 
 const isDarkMode = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
+
+const escapeRegExp = (string: string) => {
+    return string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'); // $& means the whole matched string
+};
 
 // --- Gemini Tool Declarations ---
 const analysisResponseSchema = {
@@ -531,6 +729,125 @@ const ConsentModal: React.FC<{ onConsent: () => void; styles: { [key: string]: C
     );
 };
 
+// --- Login Modal Component ---
+const LoginModal: React.FC<{ onLogin: (user: User) => void; styles: { [key: string]: CSSProperties } }> = ({ onLogin, styles }) => {
+    const [step, setStep] = useState<'details' | '2fa'>('details');
+    const [user, setUser] = useState<User>({ name: '', email: '' });
+    const [generatedCode, setGeneratedCode] = useState('');
+    const [userCode, setUserCode] = useState('');
+    const [error, setError] = useState('');
+
+    const isEmailValid = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(user.email);
+
+    const handleDetailsSubmit = (e: React.FormEvent) => {
+        e.preventDefault();
+        if (user.name.trim() && isEmailValid) {
+            const code = Math.floor(100000 + Math.random() * 900000).toString();
+            setGeneratedCode(code);
+            setError('');
+            setStep('2fa');
+        }
+    };
+
+    const handleVerifySubmit = (e: React.FormEvent) => {
+        e.preventDefault();
+        if (userCode === generatedCode) {
+            onLogin(user);
+        } else {
+            setError(t.invalidCodeError);
+            setUserCode('');
+        }
+    };
+
+    return (
+        <div style={styles.modalBackdrop}>
+            <div style={{...styles.modalContent, maxWidth: '450px'}}>
+                {step === 'details' ? (
+                    <>
+                        <h2 style={{marginTop: 0, textAlign: 'center', color: '#00A99D'}}>{t.loginTitle}</h2>
+                        <p style={{textAlign: 'center', marginTop: '-1rem', marginBottom: '1.5rem'}}>{t.loginSubtitle}</p>
+                        <form onSubmit={handleDetailsSubmit}>
+                            <div style={styles.loginFormGroup}>
+                                <label htmlFor="name" style={styles.loginLabel}>{t.nameLabel}</label>
+                                <input
+                                    type="text"
+                                    id="name"
+                                    value={user.name}
+                                    onChange={(e) => setUser(prev => ({...prev, name: e.target.value}))}
+                                    required
+                                    style={styles.loginInput}
+                                />
+                            </div>
+                            <div style={styles.loginFormGroup}>
+                                <label htmlFor="email" style={styles.loginLabel}>{t.emailLabel}</label>
+                                <input
+                                    type="email"
+                                    id="email"
+                                    value={user.email}
+                                    onChange={(e) => setUser(prev => ({...prev, email: e.target.value.trim()}))}
+                                    required
+                                    style={styles.loginInput}
+                                />
+                            </div>
+                            <button
+                                type="submit"
+                                disabled={!user.name.trim() || !isEmailValid}
+                                style={{
+                                    ...styles.button,
+                                    ...styles.startButton,
+                                    width: '100%',
+                                    marginTop: '1rem',
+                                    opacity: (user.name.trim() && isEmailValid) ? 1 : 0.5,
+                                    cursor: (user.name.trim() && isEmailValid) ? 'pointer' : 'not-allowed',
+                                }}
+                            >
+                                {t.continueButton}
+                            </button>
+                        </form>
+                    </>
+                ) : (
+                     <>
+                        <h2 style={{marginTop: 0, textAlign: 'center', color: '#00A99D'}}>{t.twoFactorTitle}</h2>
+                        <p style={{textAlign: 'center', marginTop: '-1rem', marginBottom: '1.5rem'}}>{t.twoFactorSubtitle.replace('{email}', user.email)}</p>
+                        <form onSubmit={handleVerifySubmit}>
+                            <div style={styles.twoFactorInfo}>
+                                <label style={styles.loginLabel}>{t.twoFactorCodeLabel}</label>
+                                <div style={styles.twoFactorCodeDisplay}>{generatedCode}</div>
+                            </div>
+                            <div style={styles.loginFormGroup}>
+                                <input
+                                    type="text"
+                                    value={userCode}
+                                    onChange={(e) => setUserCode(e.target.value)}
+                                    required
+                                    maxLength={6}
+                                    style={{...styles.loginInput, ...styles.twoFactorInput}}
+                                    aria-label="Verification code"
+                                />
+                            </div>
+                             {error && <p style={{...styles.error, textAlign: 'center', margin: '-0.5rem 0 1rem 0'}}>{error}</p>}
+                            <button
+                                type="submit"
+                                disabled={userCode.length !== 6}
+                                style={{
+                                    ...styles.button,
+                                    ...styles.startButton,
+                                    width: '100%',
+                                    marginTop: '1rem',
+                                    opacity: userCode.length === 6 ? 1 : 0.5,
+                                    cursor: userCode.length === 6 ? 'pointer' : 'not-allowed',
+                                }}
+                            >
+                                {t.verifyButton}
+                            </button>
+                        </form>
+                    </>
+                )}
+            </div>
+        </div>
+    );
+};
+
 
 // --- Main App Component ---
 const App: React.FC = () => {
@@ -554,6 +871,11 @@ const App: React.FC = () => {
     const [selectedAudioDevice, setSelectedAudioDevice] = useState<string>('');
     const [easterEggClicks, setEasterEggClicks] = useState(0);
     const [showEasterEgg, setShowEasterEgg] = useState(false);
+    const [currentUser, setCurrentUser] = useState<User | null>(null);
+    const [showLoginModal, setShowLoginModal] = useState(false);
+    const [showFaqModal, setShowFaqModal] = useState(false);
+    const [editingSpeaker, setEditingSpeaker] = useState<EditingSpeaker | null>(null);
+    const [isOnline, setIsOnline] = useState(navigator.onLine);
     const [hasConsented, setHasConsented] = useState(() => {
         try {
             return localStorage.getItem('verbatim_consent') === 'true';
@@ -565,7 +887,7 @@ const App: React.FC = () => {
     // --- Refs ---
     const mediaRecorderRef = useRef<MediaRecorder | null>(null);
     const audioChunksRef = useRef<Blob[]>([]);
-    const recordingTimerRef = useRef<NodeJS.Timeout | null>(null);
+    const recordingTimerRef = useRef<number | null>(null);
     const channelRef = useRef(new BroadcastChannel('verbatim_pip_channel'));
     const wakeLockSentinelRef = useRef<any | null>(null);
 
@@ -577,13 +899,27 @@ const App: React.FC = () => {
             if (savedSessions) {
                 setSessions(JSON.parse(savedSessions));
             }
+            const savedUser = localStorage.getItem('verbatim_user');
+            if (savedUser) {
+                setCurrentUser(JSON.parse(savedUser));
+            }
         } catch (e) {
-            console.error("Failed to load sessions from localStorage", e);
+            console.error("Failed to load data from localStorage", e);
         }
 
         const handleResize = () => setIsMobileView(window.innerWidth < 768);
+        const handleOnline = () => setIsOnline(true);
+        const handleOffline = () => setIsOnline(false);
+
         window.addEventListener('resize', handleResize);
-        return () => window.removeEventListener('resize', handleResize);
+        window.addEventListener('online', handleOnline);
+        window.addEventListener('offline', handleOffline);
+
+        return () => {
+            window.removeEventListener('resize', handleResize);
+            window.removeEventListener('online', handleOnline);
+            window.removeEventListener('offline', handleOffline);
+        };
     }, []);
 
     useEffect(() => {
@@ -603,9 +939,25 @@ const App: React.FC = () => {
         setHasConsented(true);
     };
 
+    const handleLoginAndProceed = (user: User) => {
+        try {
+            localStorage.setItem('verbatim_user', JSON.stringify(user));
+            setCurrentUser(user);
+            setShowLoginModal(false);
+            showDeviceSelection();
+        } catch (e) {
+            console.error("Failed to save user to localStorage", e);
+            // Optionally set an error state to show the user
+        }
+    };
+
     // --- Geolocation ---
     const [location, setLocation] = useState<{ name: string; mapUrl: string } | null>(null);
     const [isGettingLocation, setIsGettingLocation] = useState(false);
+    const locationRef = useRef(location);
+    useEffect(() => {
+        locationRef.current = location;
+    }, [location]);
 
     const getLocation = () => {
         if (!navigator.geolocation) {
@@ -668,85 +1020,23 @@ const App: React.FC = () => {
     }, [handleWakeLock]);
 
 
-    const handleStopRecording = useCallback(async () => {
+    const stopRecording = useCallback(() => {
         if (mediaRecorderRef.current && mediaRecorderRef.current.state === 'recording') {
-            mediaRecorderRef.current.stop();
+            mediaRecorderRef.current.stop(); // This triggers the onstop handler
         }
+    
         setIsRecording(false);
         setIsAnalyzing(true);
         setError(null);
-
+    
         if (recordingTimerRef.current) clearInterval(recordingTimerRef.current);
-
+    
         if (pipWindow) {
             pipWindow.close();
             setPipWindow(null);
         }
         channelRef.current.postMessage({ type: 'state_update', isRecording: false });
-
-        if (audioChunksRef.current.length === 0) {
-            setError(t.processingError);
-            setIsAnalyzing(false);
-            return;
-        }
-
-        try {
-            const audioBlob = new Blob(audioChunksRef.current, { type: 'audio/webm' });
-            audioChunksRef.current = [];
-            const base64Audio = await new Promise<string>((resolve, reject) => {
-                const reader = new FileReader();
-                reader.readAsDataURL(audioBlob);
-                reader.onloadend = () => resolve(reader.result as string);
-                reader.onerror = error => reject(error);
-            });
-            const audioData = base64Audio.split(',')[1];
-            
-             const systemInstruction = t.analysisPrompt;
-            
-             const response = await ai.models.generateContent({
-                 model: 'gemini-2.5-flash',
-                 contents: { parts: [
-                     {text: "Analyze this meeting audio."},
-                     {inlineData: { mimeType: 'audio/webm', data: audioData }}
-                 ]},
-                 config: {
-                    systemInstruction,
-                    responseMimeType: 'application/json',
-                    responseSchema: analysisResponseSchema,
-                 }
-            });
-
-            const result = JSON.parse(response.text);
-            
-            const newSession: Session = {
-                id: generateSessionId(),
-                metadata: {
-                    title: result.summary?.substring(0, 40) + '...' || t.meetingTitle,
-                    date: new Date().toISOString(),
-                    location: location?.name || t.locationUnavailable,
-                    mapUrl: location?.mapUrl || ''
-                },
-                results: {
-                    transcript: result.transcript || t.noTranscript,
-                    summary: result.summary || t.noSummary,
-                    actionItems: result.actionItems || [],
-                },
-                speakers: (result.speakers || []).reduce((acc: Record<string, string>, speaker: string) => {
-                    acc[speaker] = speaker; // Initially, label and name are the same
-                    return acc;
-                }, {})
-            };
-
-            setSessions(prev => [newSession, ...prev]);
-            setActiveSession(newSession);
-
-        } catch (err) {
-            console.error("Error processing audio with Gemini:", err);
-            setError(t.processingError);
-        } finally {
-            setIsAnalyzing(false);
-        }
-    }, [location, pipWindow, t]);
+    }, [pipWindow]);
 
      // --- PiP Communication ---
     useEffect(() => {
@@ -754,7 +1044,7 @@ const App: React.FC = () => {
         const messageHandler = (event: MessageEvent) => {
             if (event.data?.type === 'stop_recording') {
                 if (isRecording) {
-                    handleStopRecording();
+                    stopRecording();
                 }
             } else if (event.data?.type === 'pip_ready') {
                  channel.postMessage({
@@ -770,11 +1060,19 @@ const App: React.FC = () => {
         return () => {
             channel.removeEventListener('message', messageHandler);
         };
-    }, [isRecording, recordingTime, handleStopRecording]);
+    }, [isRecording, recordingTime, stopRecording]);
 
 
     // --- Recording Logic ---
-    const prepareRecording = async () => {
+    const prepareRecording = () => {
+        if (!currentUser) {
+            setShowLoginModal(true);
+            return;
+        }
+        showDeviceSelection();
+    };
+
+    const showDeviceSelection = async () => {
         try {
              // First, get microphone permission. This is necessary for enumerateDevices to return full device labels.
             const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
@@ -793,6 +1091,7 @@ const App: React.FC = () => {
         }
     };
 
+
     const startRecordingWithDevice = async (deviceId: string) => {
         if (!deviceId) {
             setError('No audio device selected.');
@@ -810,7 +1109,85 @@ const App: React.FC = () => {
                 audioChunksRef.current.push(event.data);
             };
 
-            mediaRecorderRef.current.onstop = handleStopRecording;
+            mediaRecorderRef.current.onstop = async () => {
+                // Hardening checks
+                if (recordingTime < 2) {
+                    setError(t.recordingTooShortError);
+                    setIsAnalyzing(false);
+                    setRecordingTime(0);
+                    return;
+                }
+                 if (!isOnline) {
+                    setError(t.offlineError);
+                    setIsAnalyzing(false);
+                    setRecordingTime(0);
+                    return;
+                }
+                if (audioChunksRef.current.length === 0) {
+                    setError(t.processingError);
+                    setIsAnalyzing(false);
+                    return;
+                }
+        
+                try {
+                    const audioBlob = new Blob(audioChunksRef.current, { type: 'audio/webm' });
+                    audioChunksRef.current = [];
+                    setRecordingTime(0);
+                    const base64Audio = await new Promise<string>((resolve, reject) => {
+                        const reader = new FileReader();
+                        reader.readAsDataURL(audioBlob);
+                        reader.onloadend = () => resolve(reader.result as string);
+                        reader.onerror = error => reject(error);
+                    });
+                    const audioData = base64Audio.split(',')[1];
+                    
+                     const systemInstruction = t.analysisPrompt;
+                    
+                     const response = await ai.models.generateContent({
+                         model: 'gemini-2.5-flash',
+                         contents: { parts: [
+                             {text: "Analyze this meeting audio."},
+                             {inlineData: { mimeType: 'audio/webm', data: audioData }}
+                         ]},
+                         config: {
+                            systemInstruction,
+                            responseMimeType: 'application/json',
+                            responseSchema: analysisResponseSchema,
+                         }
+                    });
+        
+                    const result = JSON.parse(response.text);
+                    const currentLoc = locationRef.current;
+                    
+                    const newSession: Session = {
+                        id: generateSessionId(),
+                        metadata: {
+                            title: result.summary?.substring(0, 40) + '...' || t.meetingTitle,
+                            date: new Date().toISOString(),
+                            location: currentLoc?.name || t.locationUnavailable,
+                            mapUrl: currentLoc?.mapUrl || ''
+                        },
+                        results: {
+                            transcript: result.transcript || t.noTranscript,
+                            summary: result.summary || t.noSummary,
+                            actionItems: result.actionItems || [],
+                        },
+                        speakers: (result.speakers || []).reduce((acc: Record<string, string>, speaker: string) => {
+                            acc[speaker] = speaker; // Initially, label and name are the same
+                            return acc;
+                        }, {})
+                    };
+        
+                    setSessions(prev => [newSession, ...prev]);
+                    setActiveSession(newSession);
+        
+                } catch (err) {
+                    console.error("Error processing audio with Gemini:", err);
+                    setError(t.processingError);
+                } finally {
+                    setIsAnalyzing(false);
+                }
+            };
 
             mediaRecorderRef.current.start();
             setIsRecording(true);
@@ -820,7 +1197,7 @@ const App: React.FC = () => {
             getLocation();
 
             if (recordingTimerRef.current) clearInterval(recordingTimerRef.current);
-            recordingTimerRef.current = setInterval(() => {
+            recordingTimerRef.current = window.setInterval(() => {
                 setRecordingTime(prevTime => {
                     const newTime = prevTime + 1;
                     channelRef.current.postMessage({ type: 'time_update', time: newTime });
@@ -988,33 +1365,40 @@ ${results.transcript}
         setActiveSession(session);
     };
     
-     const handleRenameSpeaker = (sessionId: string, speakerId: string) => {
-        const currentName = sessions.find(s => s.id === sessionId)?.speakers[speakerId] || speakerId;
-        const newName = prompt(`${t.renameSpeakerPrompt} ${currentName}:`, currentName);
-        if (newName && newName.trim() !== "") {
-            const updatedSessions = sessions.map(session => {
-                if (session.id === sessionId) {
-                    const oldSpeakerName = session.speakers[speakerId];
-                    const newSpeakers = { ...session.speakers, [speakerId]: newName.trim() };
-                    const newTranscript = session.results.transcript.replace(
-                        new RegExp(`^${oldSpeakerName}:`, 'gm'), 
-                        `${newName.trim()}:`
-                    );
-                    return { 
-                        ...session, 
-                        speakers: newSpeakers,
-                        results: { ...session.results, transcript: newTranscript }
-                    };
-                }
-                return session;
-            });
-            setSessions(updatedSessions);
-            
-            if(activeSession?.id === sessionId) {
-                const updatedActiveSession = updatedSessions.find(s => s.id === sessionId);
-                if (updatedActiveSession) setActiveSession(updatedActiveSession);
-            }
+    const handleRenameSpeaker = (sessionId: string, speakerId: string, newName: string) => {
+        if (!newName || newName.trim() === "") {
+            setEditingSpeaker(null);
+            return;
         }
+
+        const trimmedNewName = newName.trim();
+        
+        const updatedSessions = sessions.map(session => {
+            if (session.id === sessionId) {
+                const oldSpeakerName = session.speakers[speakerId];
+                if (oldSpeakerName === trimmedNewName) return session;
+
+                const newSpeakers = { ...session.speakers, [speakerId]: trimmedNewName };
+                const escapedOldName = escapeRegExp(oldSpeakerName);
+                const newTranscript = session.results.transcript.replace(
+                    new RegExp(`^${escapedOldName}:`, 'gm'), 
+                    `${trimmedNewName}:`
+                );
+                return { 
+                    ...session, 
+                    speakers: newSpeakers,
+                    results: { ...session.results, transcript: newTranscript }
+                };
+            }
+            return session;
+        });
+        setSessions(updatedSessions);
+        
+        if(activeSession?.id === sessionId) {
+            const updatedActiveSession = updatedSessions.find(s => s.id === sessionId);
+            if (updatedActiveSession) setActiveSession(updatedActiveSession);
+        }
+        setEditingSpeaker(null);
     };
     
     const handleDeleteSession = (sessionId: string) => {
@@ -1182,20 +1566,71 @@ ${results.transcript}
     
     const renderEasterEggModal = () => {
         if (!showEasterEgg) return null;
-        
+    
         const closeModal = () => setShowEasterEgg(false);
+    
+        const Confetti = () => {
+            const confettiCount = 100;
+            const colors = ['#00A99D', '#FFC107', '#FF5722', '#4CAF50', '#2196F3', '#9C27B0'];
         
+            return (
+                <div style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', pointerEvents: 'none', overflow: 'hidden' }}>
+                    {Array.from({ length: confettiCount }).map((_, i) => {
+                         const style: CSSProperties & { '--random-x'?: string, '--random-y'?: string, '--random-rot'?: string } = {
+                            position: 'absolute',
+                            width: `${Math.random() * 8 + 4}px`,
+                            height: `${Math.random() * 8 + 4}px`,
+                            backgroundColor: colors[Math.floor(Math.random() * colors.length)],
+                            top: '50%',
+                            left: '50%',
+                            opacity: 0,
+                            animation: `confetti-burst 1.5s ${Math.random() * 0.5}s ease-out forwards`,
+                            '--random-x': `${(Math.random() - 0.5) * 600}px`,
+                            '--random-y': `${(Math.random() - 0.5) * 600}px`,
+                            '--random-rot': `${Math.random() * 720 - 360}deg`,
+                        };
+                        return <div key={i} style={style} />;
+                    })}
+                </div>
+            );
+        };
+    
         return (
             <div style={styles.modalBackdrop} onClick={closeModal}>
                 <div style={styles.modalContent} onClick={(e) => e.stopPropagation()}>
+                    <Confetti />
                     <button style={styles.modalCloseButton} onClick={closeModal}>&times;</button>
                     <h3 style={styles.easterEggTitle}>{t.featureShowcase}</h3>
                     <ul style={styles.featureList}>
                         {t.featureList.map((feature, index) => <li key={index}>{feature}</li>)}
                     </ul>
+                    <p style={styles.dedicationText}>{t.dedication}</p>
                     <div style={styles.creatorCredit}>
                         <p><strong>{t.createdBy}:</strong> {t.creatorName}</p>
                         <p><a href={`mailto:${t.creatorEmail}`}>{t.creatorEmail}</a></p>
+                    </div>
+                </div>
+            </div>
+        );
+    };
+
+    const renderFaqModal = () => {
+        if (!showFaqModal) return null;
+    
+        const closeModal = () => setShowFaqModal(false);
+    
+        return (
+            <div style={styles.modalBackdrop} onClick={closeModal}>
+                <div style={{...styles.modalContent, maxWidth: '700px'}} onClick={(e) => e.stopPropagation()}>
+                    <button style={styles.modalCloseButton} onClick={closeModal}>&times;</button>
+                    <h2 style={{...styles.easterEggTitle, marginBottom: '2rem'}}>{t.faqTitle}</h2>
+                    <div style={styles.faqContainer}>
+                        {(t.faq || []).map((item, index) => (
+                            <div key={index} style={styles.faqItem}>
+                                <h4 style={styles.faqQuestion}>{item.q}</h4>
+                                <p style={styles.faqAnswer}>{item.a}</p>
+                            </div>
+                        ))}
                     </div>
                 </div>
             </div>
@@ -1206,7 +1641,7 @@ ${results.transcript}
         <div style={styles.controls}>
              {isRecording ? (
                 <>
-                    <button onClick={handleStopRecording} style={{...styles.button, ...styles.stopButton}}>
+                    <button onClick={stopRecording} style={{...styles.button, ...styles.stopButton}}>
                         {t.stopRecording} <span style={styles.timer}>{formatTime(recordingTime)}</span>
                     </button>
                     {(window as any).documentPictureInPicture && (
@@ -1251,14 +1686,15 @@ ${results.transcript}
                 style={styles.searchInput}
                 disabled={isRecording}
             />
-            {filteredSessions.map(session => (
+            {filteredSessions.map((session, index) => (
                 <div
                     key={session.id}
                     className="session-card"
                     style={{
                         ...styles.sessionCard,
                         ...(activeSession?.id === session.id ? styles.activeSessionCard : {}),
-                        ...(isRecording ? { cursor: 'not-allowed', opacity: 0.6 } : {})
+                        ...(isRecording ? { cursor: 'not-allowed', opacity: 0.6 } : {}),
+                        animation: `cardFadeIn 0.5s ease-out ${index * 0.05}s both`,
                     }}
                     onClick={() => handleSessionSelect(session)}
                 >
@@ -1320,11 +1756,11 @@ ${results.transcript}
                     </div>
                     
                     <div style={styles.resultsGrid}>
-                        <div style={styles.resultCard}>
+                        <div style={{...styles.resultCard, animation: 'cardFadeIn 0.5s ease-out 0s both'}}>
                             <h3>{t.summaryHeader}</h3>
                             <div dangerouslySetInnerHTML={{ __html: marked(activeSession.results.summary) }} />
                         </div>
-                        <div style={styles.resultCard}>
+                        <div style={{...styles.resultCard, animation: 'cardFadeIn 0.5s ease-out 0.1s both'}}>
                             <h3>{t.actionItemsHeader}</h3>
                             <ul>
                                 {activeSession.results.actionItems.map((item, index) => (
@@ -1340,18 +1776,40 @@ ${results.transcript}
                                 ))}
                             </ul>
                         </div>
-                         <div style={styles.resultCard}>
+                         <div style={{...styles.resultCard, animation: 'cardFadeIn 0.5s ease-out 0.2s both'}}>
                              <h3>{t.speakersHeader}</h3>
                             <ul>
                                 {Object.entries(activeSession.speakers).map(([id, name]) => (
                                     <li key={id} style={styles.speakerItem}>
-                                        <span>{name}</span>
-                                        <button onClick={() => handleRenameSpeaker(activeSession.id, id)} style={styles.renameButton}>✏️</button>
+                                        {editingSpeaker?.sessionId === activeSession.id && editingSpeaker?.speakerId === id ? (
+                                            <input
+                                                type="text"
+                                                defaultValue={name}
+                                                autoFocus
+                                                style={styles.speakerInput}
+                                                onBlur={(e) => handleRenameSpeaker(activeSession.id, id, e.target.value)}
+                                                onKeyDown={(e) => {
+                                                    if (e.key === 'Enter') handleRenameSpeaker(activeSession.id, id, e.currentTarget.value);
+                                                    if (e.key === 'Escape') setEditingSpeaker(null);
+                                                }}
+                                            />
+                                        ) : (
+                                            <>
+                                                <span>{name}</span>
+                                                <button 
+                                                    onClick={() => setEditingSpeaker({ sessionId: activeSession.id, speakerId: id })} 
+                                                    style={styles.renameButton}
+                                                    aria-label={`Rename ${name}`}
+                                                >
+                                                    ✏️
+                                                </button>
+                                            </>
+                                        )}
                                     </li>
                                 ))}
                             </ul>
                         </div>
-                        <div style={{...styles.resultCard, ...styles.transcriptCard}}>
+                        <div style={{...styles.resultCard, ...styles.transcriptCard, animation: 'cardFadeIn 0.5s ease-out 0.3s both'}}>
                             <h3>{t.transcriptHeader}</h3>
                             <pre style={styles.transcript}>{activeSession.results.transcript}</pre>
                         </div>
@@ -1372,7 +1830,9 @@ ${results.transcript}
         <div style={styles.appContainer}>
             <header style={styles.header}>
                 <h1 style={styles.title} onClick={handleTitleClick}>{t.title}</h1>
-                <p style={styles.subtitle}>{t.subtitle}</p>
+                <p style={styles.subtitle}>
+                    {currentUser ? t.welcomeUser.replace('{name}', currentUser.name) : t.subtitle}
+                </p>
             </header>
 
             {!isMobileView && renderControls()}
@@ -1406,17 +1866,19 @@ ${results.transcript}
                              🎤
                         </button>
                     )}
-                    <p style={styles.mobileFooterText}>{t.footerText}</p>
+                    <p style={styles.mobileFooterText}>{t.footerText} | <a href="#" onClick={(e) => { e.preventDefault(); setShowFaqModal(true); }} style={styles.footerLink}>{t.faqLink}</a></p>
                 </div>
             )}
             
             {!hasConsented && <ConsentModal onConsent={handleConsent} styles={styles} />}
+            {showLoginModal && <LoginModal onLogin={handleLoginAndProceed} styles={styles} />}
             {renderActionModal()}
             {renderDeviceSelectorModal()}
             {renderEasterEggModal()}
+            {renderFaqModal()}
             
             <footer style={{...styles.footer, ...(isMobileView && { display: 'none' })}}>
-                <p>{t.footerText}</p>
+                <p>{t.footerText} | <a href="#" onClick={(e) => { e.preventDefault(); setShowFaqModal(true); }} style={styles.footerLink}>{t.faqLink}</a></p>
             </footer>
         </div>
     );
@@ -1449,6 +1911,7 @@ const styles: { [key: string]: CSSProperties } = {
         margin: '0.25rem 0 0',
         fontSize: '1rem',
         color: isDarkMode ? '#999' : '#5F6368',
+        minHeight: '1.2rem', // Prevent layout shift when name appears
     },
     controls: {
         display: 'flex',
@@ -1552,6 +2015,7 @@ const styles: { [key: string]: CSSProperties } = {
         display: 'flex',
         justifyContent: 'space-between',
         alignItems: 'center',
+        opacity: 0, // for animation
     },
     activeSessionCard: {
         backgroundColor: 'rgba(0, 169, 157, 0.1)',
@@ -1622,6 +2086,7 @@ const styles: { [key: string]: CSSProperties } = {
         backgroundColor: isDarkMode ? '#252525' : '#F7F9FC',
         padding: '1.5rem',
         borderRadius: '12px',
+        opacity: 0, // for animation
     },
     transcriptCard: {
         gridColumn: '1 / -1',
@@ -1662,12 +2127,22 @@ const styles: { [key: string]: CSSProperties } = {
         justifyContent: 'space-between',
         alignItems: 'center',
         padding: '0.2rem 0',
+        gap: '0.5rem',
     },
     renameButton: {
         background: 'none',
         border: 'none',
         cursor: 'pointer',
         fontSize: '1rem',
+    },
+    speakerInput: {
+        width: '100%',
+        padding: '0.25rem 0.5rem',
+        borderRadius: '4px',
+        border: `1px solid ${isDarkMode ? '#444' : '#ccc'}`,
+        backgroundColor: isDarkMode ? '#333' : '#fff',
+        color: isDarkMode ? '#fff' : '#000',
+        boxSizing: 'border-box',
     },
     modalBackdrop: {
         position: 'fixed',
@@ -1701,6 +2176,7 @@ const styles: { [key: string]: CSSProperties } = {
         fontSize: '1.8rem',
         cursor: 'pointer',
         color: isDarkMode ? '#aaa' : '#555',
+        zIndex: 2,
     },
     modalPre: {
         whiteSpace: 'pre-wrap',
@@ -1726,6 +2202,11 @@ const styles: { [key: string]: CSSProperties } = {
         fontSize: '0.8rem',
         color: '#999',
         borderTop: `1px solid ${isDarkMode ? '#333' : '#E0E0E0'}`,
+    },
+    footerLink: {
+        color: '#00A99D',
+        textDecoration: 'none',
+        fontWeight: 600,
     },
     mobileControlsContainer: {
         position: 'fixed',
@@ -1821,6 +2302,12 @@ const styles: { [key: string]: CSSProperties } = {
         fontSize: '0.9rem',
         color: isDarkMode ? '#aaa' : '#555',
     },
+    dedicationText: {
+        textAlign: 'center',
+        fontStyle: 'italic',
+        marginTop: '2rem',
+        color: isDarkMode ? '#bbb' : '#555',
+    },
     consentCheckboxContainer: {
         display: 'flex',
         alignItems: 'flex-start',
@@ -1831,6 +2318,65 @@ const styles: { [key: string]: CSSProperties } = {
         marginBottom: '0.75rem',
         cursor: 'pointer',
         userSelect: 'none',
+    },
+    loginFormGroup: {
+        marginBottom: '1rem',
+    },
+    loginLabel: {
+        display: 'block',
+        marginBottom: '0.5rem',
+        fontWeight: 600,
+        fontSize: '0.9rem',
+        color: isDarkMode ? '#ccc' : '#333',
+    },
+    loginInput: {
+        width: '100%',
+        padding: '0.75rem',
+        borderRadius: '8px',
+        border: `1px solid ${isDarkMode ? '#444' : '#ccc'}`,
+        backgroundColor: isDarkMode ? '#222' : '#fff',
+        color: isDarkMode ? '#fff' : '#000',
+        boxSizing: 'border-box',
+        fontSize: '1rem',
+    },
+    twoFactorInfo: {
+        textAlign: 'center',
+        marginBottom: '1rem',
+    },
+    twoFactorCodeDisplay: {
+        fontSize: '2.5rem',
+        fontWeight: 700,
+        letterSpacing: '0.5rem',
+        padding: '0.5rem',
+        backgroundColor: isDarkMode ? '#333' : '#f5f5f5',
+        borderRadius: '8px',
+        userSelect: 'all',
+        color: '#00A99D',
+    },
+    twoFactorInput: {
+        textAlign: 'center',
+        fontSize: '1.5rem',
+        letterSpacing: '0.2rem',
+    },
+    faqContainer: {
+        maxHeight: '60vh',
+        overflowY: 'auto',
+        paddingRight: '1rem',
+    },
+    faqItem: {
+        marginBottom: '1.5rem',
+        borderBottom: `1px solid ${isDarkMode ? '#333' : '#E0E0E0'}`,
+        paddingBottom: '1.5rem',
+    },
+    faqQuestion: {
+        margin: '0 0 0.5rem 0',
+        color: '#00A99D',
+        fontSize: '1.1rem',
+    },
+    faqAnswer: {
+        margin: 0,
+        lineHeight: 1.6,
+        color: isDarkMode ? '#ccc' : '#333',
     },
 };
 
@@ -1847,6 +2393,20 @@ const keyframes = `
     @keyframes slideIn {
         from { transform: translateY(-20px); opacity: 0; }
         to { transform: translateY(0); opacity: 1; }
+    }
+    @keyframes cardFadeIn {
+        from { opacity: 0; transform: translateY(10px); }
+        to { opacity: 1; transform: translateY(0); }
+    }
+    @keyframes confetti-burst {
+        0% {
+            opacity: 1;
+            transform: translate(0, 0) rotate(0);
+        }
+        100% {
+            opacity: 0;
+            transform: translate(var(--random-x), var(--random-y)) rotate(var(--random-rot));
+        }
     }
     .session-card:hover {
         transform: translateY(-3px);

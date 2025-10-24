@@ -1,12 +1,14 @@
 
-const CACHE_NAME = 'verbatim-v3';
+
+const CACHE_NAME = 'verbatim-v4';
 const urlsToCache = [
   '/',
   '/index.html',
   '/index.tsx',
   '/pip.tsx',
   '/pip.html',
-  '/manifest.json'
+  '/manifest.json',
+  'https://fonts.googleapis.com/css2?family=Poppins:wght@400;600;700&display=swap'
 ];
 
 self.addEventListener('install', event => {
