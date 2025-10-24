@@ -16,6 +16,7 @@ type Session = { id: string; metadata: MeetingMetadata; results: MeetingResults;
 type ActionModalData = { type: string; args?: any; sourceItem?: string; };
 type User = { name: string; email: string; };
 type EditingSpeaker = { sessionId: string; speakerId: string };
+type AppState = 'loading' | 'consent' | 'login' | 'app';
 
 
 // --- i18n Translations ---
@@ -120,6 +121,7 @@ const translations = {
         invalidCodeError: 'Invalid code. Please try again.',
         faqLink: 'FAQ',
         faqTitle: 'Frequently Asked Questions',
+        logout: 'Logout',
         faq: [
             {
                 q: 'What\'s new in this version (Beta v1.1)?',
@@ -255,6 +257,7 @@ const translations = {
         invalidCodeError: 'Código no válido. Por favor, inténtalo de nuevo.',
         faqLink: 'FAQ',
         faqTitle: 'Preguntas Frecuentes',
+        logout: 'Cerrar Sesión',
         faq: [
              {
                 q: '¿Qué hay de nuevo en esta versión (Beta v1.1)?',
@@ -390,6 +393,7 @@ const translations = {
         invalidCodeError: '代码无效。请重试。',
         faqLink: '常见问题',
         faqTitle: '常见问题',
+        logout: '登出',
         faq: [
             {
                 q: '此版本（Beta v1.1）有哪些新功能？',
@@ -525,6 +529,7 @@ const translations = {
         invalidCodeError: '代碼無效。請重試。',
         faqLink: '常見問題',
         faqTitle: '常見問題',
+        logout: '登出',
         faq: [
             {
                 q: '此版本（Beta v1.1）有哪些新功能？',
@@ -852,6 +857,7 @@ const LoginModal: React.FC<{ onLogin: (user: User) => void; styles: { [key: stri
 // --- Main App Component ---
 const App: React.FC = () => {
     // --- State Management ---
+    const [appState, setAppState] = useState<AppState>('loading');
     const [isRecording, setIsRecording] = useState(false);
     const [isAnalyzing, setIsAnalyzing] = useState(false);
     const [recordingTime, setRecordingTime] = useState(0);
@@ -872,17 +878,10 @@ const App: React.FC = () => {
     const [easterEggClicks, setEasterEggClicks] = useState(0);
     const [showEasterEgg, setShowEasterEgg] = useState(false);
     const [currentUser, setCurrentUser] = useState<User | null>(null);
-    const [showLoginModal, setShowLoginModal] = useState(false);
     const [showFaqModal, setShowFaqModal] = useState(false);
     const [editingSpeaker, setEditingSpeaker] = useState<EditingSpeaker | null>(null);
     const [isOnline, setIsOnline] = useState(navigator.onLine);
-    const [hasConsented, setHasConsented] = useState(() => {
-        try {
-            return localStorage.getItem('verbatim_consent') === 'true';
-        } catch {
-            return false;
-        }
-    });
+    const [hasConsented, setHasConsented] = useState(false);
 
     // --- Refs ---
     const mediaRecorderRef = useRef<MediaRecorder | null>(null);
@@ -892,21 +891,43 @@ const App: React.FC = () => {
     const wakeLockSentinelRef = useRef<any | null>(null);
 
 
-    // --- Data Persistence & Responsive View ---
+    // --- App Initialization & Auth Flow ---
     useEffect(() => {
-        try {
-            const savedSessions = localStorage.getItem('verbatim_sessions');
-            if (savedSessions) {
-                setSessions(JSON.parse(savedSessions));
+        const loadAppData = () => {
+            try {
+                const savedSessions = localStorage.getItem('verbatim_sessions');
+                if (savedSessions) {
+                    setSessions(JSON.parse(savedSessions));
+                }
+            } catch (e) {
+                console.error("Failed to load sessions", e);
             }
+        };
+
+        try {
+            const consented = localStorage.getItem('verbatim_consent') === 'true';
+            if (!consented) {
+                setAppState('consent');
+                return;
+            }
+            setHasConsented(true);
+
             const savedUser = localStorage.getItem('verbatim_user');
-            if (savedUser) {
+            if (!savedUser) {
+                setAppState('login');
+            } else {
                 setCurrentUser(JSON.parse(savedUser));
+                loadAppData();
+                setAppState('app');
             }
         } catch (e) {
-            console.error("Failed to load data from localStorage", e);
+            console.error("Auth flow error", e);
+            setAppState('consent');
         }
+    }, []);
 
+    // --- Responsive View & Online Status ---
+    useEffect(() => {
         const handleResize = () => setIsMobileView(window.innerWidth < 768);
         const handleOnline = () => setIsOnline(true);
         const handleOffline = () => setIsOnline(false);
@@ -922,32 +943,47 @@ const App: React.FC = () => {
         };
     }, []);
 
+    // --- Session Persistence ---
     useEffect(() => {
-        try {
-            localStorage.setItem('verbatim_sessions', JSON.stringify(sessions));
-        } catch (e) {
-            console.error("Failed to save sessions to localStorage", e);
+        // Only save sessions if the user has an account
+        if (currentUser) {
+            try {
+                localStorage.setItem('verbatim_sessions', JSON.stringify(sessions));
+            } catch (e) {
+                console.error("Failed to save sessions to localStorage", e);
+            }
         }
-    }, [sessions]);
+    }, [sessions, currentUser]);
 
+    // --- Auth Handlers ---
     const handleConsent = () => {
         try {
             localStorage.setItem('verbatim_consent', 'true');
+            setHasConsented(true);
+            setAppState('login');
         } catch (e) {
             console.error("Failed to save consent to localStorage", e);
         }
-        setHasConsented(true);
     };
 
-    const handleLoginAndProceed = (user: User) => {
+    const handleLogin = (user: User) => {
         try {
             localStorage.setItem('verbatim_user', JSON.stringify(user));
             setCurrentUser(user);
-            setShowLoginModal(false);
-            showDeviceSelection();
+            setAppState('app');
         } catch (e) {
             console.error("Failed to save user to localStorage", e);
-            // Optionally set an error state to show the user
+        }
+    };
+
+    const handleLogout = () => {
+        try {
+            localStorage.removeItem('verbatim_user');
+            setCurrentUser(null);
+            setActiveSession(null);
+            setAppState('login');
+        } catch (e) {
+            console.error("Failed to log out", e);
         }
     };
 
@@ -1065,10 +1101,6 @@ const App: React.FC = () => {
 
     // --- Recording Logic ---
     const prepareRecording = () => {
-        if (!currentUser) {
-            setShowLoginModal(true);
-            return;
-        }
         showDeviceSelection();
     };
 
@@ -1826,13 +1858,36 @@ ${results.transcript}
 
 
     // --- Main Render ---
+    if (appState === 'loading') {
+        return (
+            <div style={{...styles.appContainer, display: 'flex', justifyContent: 'center', alignItems: 'center'}}>
+                <div style={styles.loader}></div>
+            </div>
+        );
+    }
+
+    if (appState === 'consent') {
+        return <ConsentModal onConsent={handleConsent} styles={styles} />;
+    }
+
+    if (appState === 'login') {
+        return <LoginModal onLogin={handleLogin} styles={styles} />;
+    }
+
     return (
         <div style={styles.appContainer}>
             <header style={styles.header}>
                 <h1 style={styles.title} onClick={handleTitleClick}>{t.title}</h1>
-                <p style={styles.subtitle}>
-                    {currentUser ? t.welcomeUser.replace('{name}', currentUser.name) : t.subtitle}
-                </p>
+                 <div style={styles.userArea}>
+                    {currentUser ? (
+                        <>
+                            <span>{t.welcomeUser.replace('{name}', currentUser.name)}</span>
+                            <button onClick={handleLogout} style={styles.logoutButton}>{t.logout}</button>
+                        </>
+                    ) : (
+                        <p style={styles.subtitle}>{t.subtitle}</p>
+                    )}
+                </div>
             </header>
 
             {!isMobileView && renderControls()}
@@ -1870,8 +1925,6 @@ ${results.transcript}
                 </div>
             )}
             
-            {!hasConsented && <ConsentModal onConsent={handleConsent} styles={styles} />}
-            {showLoginModal && <LoginModal onLogin={handleLoginAndProceed} styles={styles} />}
             {renderActionModal()}
             {renderDeviceSelectorModal()}
             {renderEasterEggModal()}
@@ -1911,7 +1964,27 @@ const styles: { [key: string]: CSSProperties } = {
         margin: '0.25rem 0 0',
         fontSize: '1rem',
         color: isDarkMode ? '#999' : '#5F6368',
-        minHeight: '1.2rem', // Prevent layout shift when name appears
+    },
+    userArea: {
+        margin: '0.25rem 0 0',
+        fontSize: '1rem',
+        color: isDarkMode ? '#ccc' : '#5F6368',
+        minHeight: '1.2rem',
+        display: 'flex',
+        justifyContent: 'center',
+        alignItems: 'center',
+        gap: '0.75rem',
+        flexWrap: 'wrap',
+    },
+    logoutButton: {
+        background: 'none',
+        border: `1px solid ${isDarkMode ? '#555' : '#ccc'}`,
+        color: isDarkMode ? '#ccc' : '#5F6368',
+        padding: '0.2rem 0.6rem',
+        borderRadius: '20px',
+        fontSize: '0.8rem',
+        cursor: 'pointer',
+        transition: 'all 0.2s ease',
     },
     controls: {
         display: 'flex',
@@ -2150,7 +2223,7 @@ const styles: { [key: string]: CSSProperties } = {
         left: 0,
         width: '100%',
         height: '100%',
-        backgroundColor: 'rgba(0, 0, 0, 0.7)',
+        backgroundColor: isDarkMode ? 'rgba(18, 18, 18, 0.9)' : 'rgba(247, 249, 252, 0.9)',
         display: 'flex',
         justifyContent: 'center',
         alignItems: 'center',
@@ -2164,7 +2237,7 @@ const styles: { [key: string]: CSSProperties } = {
         maxWidth: '500px',
         width: '90%',
         position: 'relative',
-        boxShadow: '0 5px 15px rgba(0,0,0,0.3)',
+        boxShadow: `0 5px 15px rgba(0,0,0,${isDarkMode ? 0.5 : 0.1})`,
         animation: 'slideIn 0.3s ease',
     },
     modalCloseButton: {
@@ -2416,13 +2489,17 @@ const keyframes = `
         background-color: ${isDarkMode ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.05)'};
     }
     .action-button, button {
-      transition: opacity 0.2s ease, transform 0.2s ease;
+      transition: opacity 0.2s ease, transform 0.2s ease, background-color 0.2s ease, border-color 0.2s ease;
     }
     .action-button:hover, button:hover {
        opacity: 0.9;
     }
     .action-button:active, button:active {
        transform: scale(0.97);
+    }
+    .logoutButton:hover {
+        background-color: ${isDarkMode ? '#333' : '#e0e0e0'};
+        border-color: ${isDarkMode ? '#777' : '#aaa'};
     }
 `;
 const styleSheet = document.createElement("style");
