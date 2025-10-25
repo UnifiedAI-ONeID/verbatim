@@ -1,4 +1,4 @@
- p;;v 
+
 import React, { useState, useRef, useEffect } from 'react';
 import { createRoot } from 'react-dom/client';
 import { marked } from 'marked';
@@ -37,7 +37,7 @@ type ActionModalData = { type: string; args?: any; sourceItem?: string; };
 type EditingSpeaker = { sessionId: string; speakerId: string };
 type ActiveTab = 'record' | 'sessions';
 
-// --- i18n Translations ---
+// --- i18n Translations (Consolidated & Corrected) ---
 const translations = {
     en: {
         title: 'Verbatim',
@@ -135,7 +135,7 @@ const getLanguage = (): Language => {
     return 'en';
 };
 
-const t = translations[getLanguage()];
+const t = translations[getLanguage()] || translations.en;
 
 const App = () => {
     // --- State Management ---
@@ -266,7 +266,7 @@ const App = () => {
                         metadata: {
                             title: \`Meeting - \${new Date().toLocaleString()}\`,
                             date: new Date().toISOString(),
-                            location: 'Fetching location...',
+                            location: 'TBD',
                             mapUrl: ''
                         },
                         status: 'processing',
@@ -351,7 +351,7 @@ const App = () => {
 
     const filteredSessions = sessions.filter(s =>
         s.metadata.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        s.results?.summary.toLowerCase().includes(searchQuery.toLowerCase())
+        (s.results?.summary || '').toLowerCase().includes(searchQuery.toLowerCase())
     );
 
     if (isLoading) return <LoadingSpinner />;
@@ -491,12 +491,12 @@ const SessionDetail = ({ session, onBack, onTakeAction, onRenameSpeaker, editing
                         {editingSpeaker?.speakerId === id ? (
                             <input
                                 type="text"
-                                defaultValue={name}
+                                defaultValue={name as string}
                                 onBlur={(e) => onRenameSpeaker(session.id, id, e.target.value)}
                                 autoFocus
                             />
                         ) : (
-                            <span onClick={() => setEditingSpeaker({ sessionId: session.id, speakerId: id })}>{name} ✏️</span>
+                            <span onClick={() => setEditingSpeaker({ sessionId: session.id, speakerId: id })}>{name as string} ✏️</span>
                         )}
                     </div>
                 ))}
@@ -521,13 +521,14 @@ const Modal = ({ children, onClose, title }) => (
 
 const ActionModal = ({ data, onClose, user }) => {
     const { type, args } = data;
-    // Render different modal content based on action 'type'
-    return <Modal onClose={onClose} title="Action"><div>{JSON.stringify(args)}</div></Modal>;
+    // A simple display for any action
+    return <Modal onClose={onClose} title="Suggested Action"><p>Action: {type}</p><pre>{JSON.stringify(args, null, 2)}</pre></Modal>;
 };
 
 const AudioDeviceSelector = ({ devices, onDeviceSelected, onClose }) => (
     <Modal onClose={onClose} title={t.selectAudioDeviceTitle}>
-        <select onChange={e => onDeviceSelected(e.target.value)}>
+        <select onChange={e => onDeviceSelected(e.target.value)} defaultValue="">
+            <option value="" disabled>Select a device</option>
             {devices.map(d => <option key={d.deviceId} value={d.deviceId}>{d.label}</option>)}
         </select>
     </Modal>
@@ -545,19 +546,27 @@ const BottomNav = ({ activeTab, onTabChange }) => (
     </nav>
 );
 
-const Accordion = ({ title, children, defaultOpen }) => {
+const Accordion = ({ title, children, defaultOpen = false }) => {
     const [isOpen, setIsOpen] = useState(defaultOpen);
     return (
-        <div>
+        <div className="accordion-item">
             <h3 onClick={() => setIsOpen(!isOpen)}>{title}</h3>
-            {isOpen && <div>{children}</div>}
+            {isOpen && <div className="accordion-content">{children}</div>}
         </div>
     );
 };
 
 // --- Global Styles ---
 const globalStyles = \`
-    :root { /* styles omitted for brevity */ }
+    /* Minimal styles for functionality */
+    body { font-family: sans-serif; background: #121212; color: #eee; }
+    .app-container { max-width: 800px; margin: 0 auto; padding: 1rem; }
+    .mic-button { font-size: 2rem; width: 100px; height: 100px; border-radius: 50%; }
+    .mic-button.stop { background: red; }
+    .modal-overlay { position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.7); display: flex; align-items: center; justify-content: center; }
+    .modal-content { background: #333; padding: 2rem; border-radius: 8px; }
+    .bottom-nav { position: fixed; bottom: 0; left: 0; right: 0; display: flex; justify-content: space-around; background: #222; padding: 1rem; }
+    .accordion-item h3 { cursor: pointer; }
 \`;
 
 const root = createRoot(document.getElementById('root') as HTMLElement);
