@@ -478,6 +478,7 @@ const App = () => {
     const [isLoading, setIsLoading] = useState(true);
     const [activeTab, setActiveTab] = useState<ActiveTab>('record');
     const [keepAwakeEnabled, setKeepAwakeEnabled] = useState(() => JSON.parse(localStorage.getItem('verbatim_keepAwake') || 'false'));
+    const [showDedication, setShowDedication] = useState(false);
     const { t } = useLocalization();
     const { setTheme } = useTheme();
     const { requestWakeLock, releaseWakeLock } = useKeepAwake();
@@ -486,6 +487,7 @@ const App = () => {
     const audioChunksRef = useRef<Blob[]>([]);
     const recordingIntervalRef = useRef<number | null>(null);
     const konamiIndexRef = useRef(0);
+    const logoClickCount = useRef(0);
 
     // Easter Egg: Konami Code
     useEffect(() => {
@@ -504,6 +506,14 @@ const App = () => {
         window.addEventListener('keydown', handleKeyDown);
         return () => window.removeEventListener('keydown', handleKeyDown);
     }, [setTheme]);
+
+    const handleLogoClick = () => {
+        logoClickCount.current += 1;
+        if (logoClickCount.current >= 5) {
+            setShowDedication(true);
+            logoClickCount.current = 0; // Reset
+        }
+    };
 
     const signInWithGoogle = useCallback(async (): Promise<User | null> => {
         setError(null);
@@ -669,22 +679,23 @@ const App = () => {
 
     return (
         <div style={styles.appContainer}>
-            <Header user={user} onSignIn={signInWithGoogle} />
+            <Header user={user} onSignIn={signInWithGoogle} onLogoClick={handleLogoClick} />
             <main style={styles.mainContent}>{renderContent()}</main>
             {!selectedSession && <BottomNav activeTab={activeTab} setActiveTab={(tab) => {setSelectedSession(null); setActiveTab(tab)}} />}
             {showDeviceSelector && <Modal title={t.selectAudioDeviceTitle} onClose={() => setShowDeviceSelector(false)}><p>{t.selectAudioDeviceInstruction}</p><ul style={styles.deviceList}>{availableDevices.map((d, i) => <li key={d.deviceId} style={styles.deviceItem} onClick={() => handleStartRecording(d.deviceId)}>{d.label || `Mic ${i + 1}`}</li>)}</ul></Modal>}
             {showActionModal && <ActionModal data={showActionModal} user={user} onClose={() => setShowActionModal(null)} />}
+            {showDedication && <DedicationModal onClose={() => setShowDedication(false)} />}
         </div>
     );
 };
 
 // --- Sub-Components ---
-const Header = ({ user, onSignIn }: { user: User | null; onSignIn: () => void; }) => {
+const Header = ({ user, onSignIn, onLogoClick }: { user: User | null; onSignIn: () => void; onLogoClick: () => void; }) => {
     const { t, lang, setLang } = useLocalization();
     const { theme, toggleTheme } = useTheme();
     return (
         <header style={styles.header}>
-            <div style={styles.logo}><svg width="32" height="32" viewBox="0 0 192 192" fill="none" xmlns="http://www.w3.org/2000/svg"><rect width="192" height="192" rx="48" fill="var(--bg-3)"/><path d="M48 68L80 124L112 68" stroke="var(--accent-primary)" strokeWidth="16" strokeLinecap="round"/><path d="M112 124V68" stroke="var(--accent-primary)" strokeWidth="16" strokeLinecap="round"/><path d="M144 68L144 124" stroke="var(--text-secondary)" strokeOpacity="0.6" strokeWidth="10" strokeLinecap="round"/><path d="M128 80L128 112" stroke="var(--text-secondary)" strokeOpacity="0.6" strokeWidth="10" strokeLinecap="round"/></svg><span style={{color: 'var(--accent-primary)'}}>{t.title}</span></div>
+            <div style={styles.logo} onClick={onLogoClick} role="button" aria-label="Verbatim Logo"><svg width="32" height="32" viewBox="0 0 192 192" fill="none" xmlns="http://www.w3.org/2000/svg"><rect width="192" height="192" rx="48" fill="var(--bg-3)"/><path d="M48 68L80 124L112 68" stroke="var(--accent-primary)" strokeWidth="16" strokeLinecap="round"/><path d="M112 124V68" stroke="var(--accent-primary)" strokeWidth="16" strokeLinecap="round"/><path d="M144 68L144 124" stroke="var(--text-secondary)" strokeOpacity="0.6" strokeWidth="10" strokeLinecap="round"/><path d="M128 80L128 112" stroke="var(--text-secondary)" strokeOpacity="0.6" strokeWidth="10" strokeLinecap="round"/></svg><span style={{color: 'var(--accent-primary)'}}>{t.title}</span></div>
             <div style={styles.headerControls}>
                  <select value={lang} onChange={e => setLang(e.target.value as Language)} style={styles.headerSelect} aria-label={t.language}><option value="en">EN</option><option value="es">ES</option><option value="zh-CN">简体</option><option value="zh-TW">繁體</option></select>
                 <button onClick={toggleTheme} style={styles.themeToggleButton} aria-label={`${t.theme}: ${theme}`}>{theme === 'light' ? '🌙' : '☀️'}</button>
@@ -790,6 +801,33 @@ const Accordion = ({ title, children, defaultOpen = false }: AccordionProps) => 
     return <div style={styles.accordionContainer}><button style={styles.accordionHeader} onClick={() => setIsOpen(!isOpen)} aria-expanded={isOpen}>{title}<span>{isOpen ? '−' : '+'}</span></button>{isOpen && <div style={styles.accordionContent}>{children}</div>}</div>;
 };
 
+const DedicationModal = ({ onClose }: { onClose: () => void }) => {
+    const dedicationText = "Lovingly dedicated to moms and the Creator. ❤️";
+
+    useEffect(() => {
+        const timeout = setTimeout(onClose, 8000); // Auto-close after 8 seconds
+        return () => clearTimeout(timeout);
+    }, [onClose]);
+
+    return (
+        <div style={styles.dedicationOverlay} onClick={onClose}>
+            <div style={styles.confettiContainer}>
+                {Array.from({ length: 150 }).map((_, i) => (
+                    <div key={i} className="confetti-piece" style={{
+                        left: `${Math.random() * 100}%`,
+                        animationDelay: `${Math.random() * 5}s`,
+                        backgroundColor: ['#f94144', '#f3722c', '#f8961e', '#f9c74f', '#90be6d', '#43aa8b', '#577590'][Math.floor(Math.random() * 7)],
+                        transform: `rotate(${Math.random() * 360}deg)`
+                    }}></div>
+                ))}
+            </div>
+            <div style={styles.dedicationModal} onClick={(e) => e.stopPropagation()}>
+                <p style={styles.dedicationText}>{dedicationText}</p>
+            </div>
+        </div>
+    );
+};
+
 // --- STYLES (using CSS variables) ---
 const styles: { [key: string]: CSSProperties } = {
     appContainer: { display: 'flex', flexDirection: 'column', minHeight: '100dvh', backgroundColor: 'var(--bg)' },
@@ -797,7 +835,7 @@ const styles: { [key: string]: CSSProperties } = {
     loadingContainer: { display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh', color: 'var(--text-secondary)' },
     header: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '12px 16px', borderBottom: '1px solid var(--border-color)', position: 'sticky', top: 0, backgroundColor: 'var(--bg)', zIndex: 100 },
     headerControls: { display: 'flex', alignItems: 'center', gap: '10px' },
-    logo: { display: 'flex', alignItems: 'center', gap: '10px', fontSize: '1.5rem', fontWeight: 'bold' },
+    logo: { display: 'flex', alignItems: 'center', gap: '10px', fontSize: '1.5rem', fontWeight: 'bold', cursor: 'pointer' },
     recordView: { flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'center', padding: '16px', boxSizing: 'border-box' },
     recordButtonContainer: { display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', flexGrow: 1, textAlign: 'center' },
     recordButton: { width: '150px', height: '150px', borderRadius: '50%', border: 'none', backgroundColor: 'var(--accent-primary)', color: 'var(--accent-primary-text)', fontSize: '4rem', cursor: 'pointer', display: 'flex', justifyContent: 'center', alignItems: 'center', transition: 'all 0.3s ease', boxShadow: '0 0 20px color-mix(in srgb, var(--accent-primary) 40%, transparent)' },
@@ -855,9 +893,16 @@ const styles: { [key: string]: CSSProperties } = {
     actionButton: { display: 'inline-block', marginTop: '15px', padding: '10px 20px', backgroundColor: 'var(--accent-primary)', color: 'var(--accent-primary-text)', textDecoration: 'none', borderRadius: '8px', fontWeight: 'bold' },
     preformattedText: { whiteSpace: 'pre-wrap', backgroundColor: 'var(--bg-3)', padding: '10px', borderRadius: '6px', maxHeight: '150px', overflowY: 'auto' },
     sourceItemText: { color: 'var(--text-secondary)', borderLeft: '3px solid var(--accent-primary)', paddingLeft: '10px', marginBottom: '15px' },
+    dedicationOverlay: { position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0, 0, 0, 0.5)', display: 'flex', justifyContent: 'center', alignItems: 'center', zIndex: 3000, overflow: 'hidden' },
+    confettiContainer: { position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', pointerEvents: 'none' },
+    dedicationModal: { padding: '30px', borderRadius: '12px', textAlign: 'center', color: 'white', textShadow: '0 2px 4px rgba(0,0,0,0.5)' },
+    dedicationText: { fontSize: '1.5rem', fontWeight: 'bold', margin: 0 },
 };
 const styleSheet = document.createElement("style");
-styleSheet.innerText = `@keyframes pulse { 0% { transform: scale(0.95); box-shadow: 0 0 0 0 color-mix(in srgb, var(--danger) 70%, transparent); } 70% { transform: scale(1); box-shadow: 0 0 0 20px color-mix(in srgb, var(--danger) 0%, transparent); } 100% { transform: scale(0.95); box-shadow: 0 0 0 0 color-mix(in srgb, var(--danger) 0%, transparent); } } .slider { position: absolute; cursor: pointer; inset: 0; background-color: var(--bg-3); transition: .4s; border-radius: 28px; } .slider:before { position: absolute; content: ""; height: 20px; width: 20px; left: 4px; bottom: 4px; background-color: white; transition: .4s; border-radius: 50%; } input { opacity: 0; width: 0; height: 0; } input:checked + .slider { background-color: var(--accent-primary); } input:checked + .slider:before { transform: translateX(22px); }`;
+styleSheet.innerText = `@keyframes pulse { 0% { transform: scale(0.95); box-shadow: 0 0 0 0 color-mix(in srgb, var(--danger) 70%, transparent); } 70% { transform: scale(1); box-shadow: 0 0 0 20px color-mix(in srgb, var(--danger) 0%, transparent); } 100% { transform: scale(0.95); box-shadow: 0 0 0 0 color-mix(in srgb, var(--danger) 0%, transparent); } } .slider { position: absolute; cursor: pointer; inset: 0; background-color: var(--bg-3); transition: .4s; border-radius: 28px; } .slider:before { position: absolute; content: ""; height: 20px; width: 20px; left: 4px; bottom: 4px; background-color: white; transition: .4s; border-radius: 50%; } input { opacity: 0; width: 0; height: 0; } input:checked + .slider { background-color: var(--accent-primary); } input:checked + .slider:before { transform: translateX(22px); }
+@keyframes confetti-fall { 0% { transform: translateY(-10vh) rotate(0deg); opacity: 1; } 100% { transform: translateY(110vh) rotate(720deg); opacity: 0; } }
+.confetti-piece { position: absolute; width: 10px; height: 20px; opacity: 0; animation: confetti-fall 6s linear forwards; }
+`;
 document.head.appendChild(styleSheet);
 
 
