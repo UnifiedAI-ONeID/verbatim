@@ -1,11 +1,10 @@
 
-
 const CACHE_NAME = 'verbatim-v4';
 const urlsToCache = [
   '/',
   '/index.html',
-  '/index.tsx',
-  '/pip.tsx',
+  '/index.js',
+  '/pip.js',
   '/pip.html',
   '/manifest.json',
   'https://fonts.googleapis.com/css2?family=Poppins:wght@400;600;700&display=swap'

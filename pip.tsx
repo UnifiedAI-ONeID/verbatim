@@ -1,81 +1,116 @@
 
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect } from 'react';
 import { createRoot } from 'react-dom/client';
 
-const PIP_STYLES: React.CSSProperties = {
-    display: 'flex',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    padding: '8px',
-    fontFamily: 'monospace',
-    backgroundColor: '#1E1E1E',
-    color: '#E0E0E0',
-    borderRadius: '8px',
-    margin: '4px',
-    height: 'calc(100vh - 8px)',
+const channel = new BroadcastChannel('verbatim_pip_channel');
+
+const formatTime = (seconds: number) => {
+    const mins = Math.floor(seconds / 60).toString().padStart(2, '0');
+    const secs = (seconds % 60).toString().padStart(2, '0');
+    return `${mins}:${secs}`;
 };
 
-const BUTTON_STYLES: React.CSSProperties = {
-    backgroundColor: '#CF6679',
-    color: 'white',
-    border: 'none',
-    borderRadius: '50%',
-    width: '48px',
-    height: '48px',
-    cursor: 'pointer',
-    display: 'flex',
-    justifyContent: 'center',
-    alignItems: 'center',
-    fontSize: '24px',
-};
-
-const TIMER_STYLES: React.CSSProperties = {
-    fontSize: '1.5rem',
-    fontWeight: 'bold',
-};
-
-const PiPWindow = () => {
+const PipApp = () => {
+    const [isRecording, setIsRecording] = useState(false);
     const [time, setTime] = useState(0);
-    const channel = useRef(new BroadcastChannel('verbatim_pip_channel'));
 
     useEffect(() => {
         const handleMessage = (event: MessageEvent) => {
-            if (event.data.type === 'time_update') {
-                setTime(event.data.time);
+            const { type, isRecording: newIsRecording, time: newTime, recordingTime } = event.data;
+            if (type === 'state_update') {
+                if (newIsRecording !== undefined) setIsRecording(newIsRecording);
+                if (recordingTime !== undefined) setTime(recordingTime);
+            } else if (type === 'time_update') {
+                 if (newTime !== undefined) setTime(newTime);
             }
         };
 
-        const currentChannel = channel.current;
-        currentChannel.addEventListener('message', handleMessage);
+        channel.addEventListener('message', handleMessage);
+        channel.postMessage({ type: 'pip_ready' });
 
-        // Notify the main window that the PiP window is ready
-        currentChannel.postMessage({ type: 'pip_ready' });
-
-        return () => {
-            currentChannel.removeEventListener('message', handleMessage);
-        };
+        return () => channel.removeEventListener('message', handleMessage);
     }, []);
 
-    const formatTime = (seconds: number) => {
-        const mins = Math.floor(seconds / 60).toString().padStart(2, '0');
-        const secs = (seconds % 60).toString().padStart(2, '0');
-        return `${mins}:${secs}`;
+    const handleStop = () => {
+        channel.postMessage({ type: 'stop_recording' });
     };
 
-    const handleStop = () => {
-        channel.current.postMessage({ type: 'stop_recording' });
-        window.close();
+    const styles: { [key: string]: React.CSSProperties } = {
+        container: {
+            backgroundColor: '#1E1E1E',
+            color: 'white',
+            fontFamily: "'Poppins', sans-serif",
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            width: '100%',
+            height: '100%',
+            boxSizing: 'border-box',
+            padding: '12px 16px',
+            borderRadius: '12px',
+        },
+        statusContainer: {
+            display: 'flex',
+            alignItems: 'center',
+            gap: '8px',
+        },
+        recordingIndicator: {
+            width: '12px',
+            height: '12px',
+            borderRadius: '50%',
+            backgroundColor: '#dc3545',
+            animation: 'pulse 2s infinite',
+        },
+        timer: {
+            fontSize: '1.5rem',
+            fontWeight: 600,
+            fontFamily: 'monospace',
+            flexGrow: 1,
+            textAlign: 'center',
+        },
+        stopButton: {
+            backgroundColor: '#dc3545',
+            color: 'white',
+            border: 'none',
+            borderRadius: '8px',
+            padding: '8px 16px',
+            fontSize: '1rem',
+            fontWeight: 600,
+            cursor: 'pointer',
+        }
     };
 
     return (
-        <div style={PIP_STYLES}>
-            <span style={TIMER_STYLES}>{formatTime(time)}</span>
-            <button style={BUTTON_STYLES} onClick={handleStop}>
-                ⏹️
+        <div style={styles.container}>
+            <div style={styles.statusContainer}>
+                <div style={styles.recordingIndicator}></div>
+            </div>
+            <div style={styles.timer}>{formatTime(time)}</div>
+            <button style={styles.stopButton} onClick={handleStop}>
+                Stop
             </button>
         </div>
     );
 };
 
+const style = document.createElement('style');
+style.textContent = `
+    @import url('https://fonts.googleapis.com/css2?family=Poppins:wght@400;600;700&display=swap');
+    
+    @keyframes pulse {
+        0% { box-shadow: 0 0 0 0 rgba(220, 53, 69, 0.7); }
+        70% { box-shadow: 0 0 0 8px rgba(220, 53, 69, 0); }
+        100% { box-shadow: 0 0 0 0 rgba(220, 53, 69, 0); }
+    }
+
+    body {
+        margin: 0;
+        overflow: hidden;
+        border-radius: 12px;
+    }
+`;
+document.head.appendChild(style);
+
+
 const root = createRoot(document.getElementById('root') as HTMLElement);
-root.render(<PiPWindow />);
+root.render(<PipApp />);
