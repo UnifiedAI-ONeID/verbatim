@@ -4,15 +4,8 @@ const { initializeApp } = require("firebase-admin/app");
 const { getFirestore } = require("firebase-admin/firestore");
 const { getStorage } = require("firebase-admin/storage");
 const { GoogleGenerativeAI, HarmCategory, HarmBlockThreshold } = require("@google/generative-ai");
-const { defineString } = require("firebase-functions/params");
 
 initializeApp();
-
-// Define the Gemini API Key from a secret parameter for security
-const geminiApiKey = defineString("GEMINI_API_KEY");
-
-// Initialize the Gemini client with the API key
-const genAI = new GoogleGenerativeAI(geminiApiKey.value());
 
 // Common configuration for the generative model to ensure consistency
 const generationConfig = {
@@ -30,36 +23,19 @@ const safetySettings = [
     { category: HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT, threshold: HarmBlockThreshold.BLOCK_NONE },
 ];
 
-// Reusable generative model instance for analyzing audio content
-const audioModel = genAI.getGenerativeModel({
-  model: "gemini-1.5-flash",
-  generationConfig,
-  safetySettings
-});
-
-// Reusable generative model instance for determining actions using function calling
-const actionModel = genAI.getGenerativeModel({
-  model: "gemini-1.5-flash",
-  tools: [
-    {
-      functionDeclarations: [
-        { name: 'create_calendar_event', description: 'Creates a Google Calendar event.', parameters: { type: 'OBJECT', properties: { title: { type: 'STRING' }, description: { type: 'STRING' }, date: { type: 'STRING' }, time: { type: 'STRING' } }, required: ['title', 'date', 'time'] } },
-        { name: 'draft_email', description: 'Drafts an email.', parameters: { type: 'OBJECT', properties: { to: { type: 'STRING' }, subject: { type: 'STRING' }, body: { type: 'STRING' } }, required: ['to', 'subject', 'body'] } },
-        { name: 'initiate_phone_call', description: 'Initiates a phone call.', parameters: { type: 'OBJECT', properties: { phoneNumber: { type: 'STRING' }, reason: { type: 'STRING' } }, required: ['phoneNumber'] } },
-        { name: 'create_document', description: 'Creates a text document.', parameters: { type: 'OBJECT', properties: { title: { type: 'STRING' }, content: { type: 'STRING' } }, required: ['title', 'content'] } },
-        { name: 'draft_invoice_email', description: 'Drafts an email to send an invoice.', parameters: { type: 'OBJECT', properties: { to: { type: 'STRING' }, recipientName: { type: 'STRING' }, subject: { type: 'STRING' }, amount: { type: 'NUMBER' }, currencySymbol: { type: 'STRING' }, itemDescription: { type: 'STRING' } }, required: ['to', 'recipientName', 'subject', 'amount', 'currencySymbol', 'itemDescription'] } },
-      ],
-    },
-  ],
-  generationConfig,
-  safetySettings
-});
-
 /**
  * Analyzes an audio file from Cloud Storage, generates a summary, action items,
  * and a transcript, and updates the session in Firestore.
  */
 exports.analyzeAudio = onCall({ timeoutSeconds: 540, secrets: ["GEMINI_API_KEY"] }, async (request) => {
+  // Initialize the Gemini client with the API key
+  const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
+  const audioModel = genAI.getGenerativeModel({
+    model: "gemini-1.5-flash",
+    generationConfig,
+    safetySettings
+  });
+
   if (!request.auth) {
     throw new Error("The function must be called while authenticated.");
   }
@@ -117,6 +93,25 @@ exports.analyzeAudio = onCall({ timeoutSeconds: 540, secrets: ["GEMINI_API_KEY"]
  * Uses Gemini's function calling feature to select a tool.
  */
 exports.determineAction = onCall({ secrets: ["GEMINI_API_KEY"] }, async (request) => {
+  // Initialize the Gemini client with the API key
+  const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
+  const actionModel = genAI.getGenerativeModel({
+    model: "gemini-1.5-flash",
+    tools: [
+      {
+        functionDeclarations: [
+          { name: 'create_calendar_event', description: 'Creates a Google Calendar event.', parameters: { type: 'OBJECT', properties: { title: { type: 'STRING' }, description: { type: 'STRING' }, date: { type: 'STRING' }, time: { type: 'STRING' } }, required: ['title', 'date', 'time'] } },
+          { name: 'draft_email', description: 'Drafts an email.', parameters: { type: 'OBJECT', properties: { to: { type: 'STRING' }, subject: { type: 'STRING' }, body: { type: 'STRING' } }, required: ['to', 'subject', 'body'] } },
+          { name: 'initiate_phone_call', description: 'Initiates a phone call.', parameters: { type: 'OBJECT', properties: { phoneNumber: { type: 'STRING' }, reason: { type: 'STRING' } }, required: ['phoneNumber'] } },
+          { name: 'create_document', description: 'Creates a text document.', parameters: { type: 'OBJECT', properties: { title: { type: 'STRING' }, content: { type: 'STRING' } }, required: ['title', 'content'] } },
+          { name: 'draft_invoice_email', description: 'Drafts an email to send an invoice.', parameters: { type: 'OBJECT', properties: { to: { type: 'STRING' }, recipientName: { type: 'STRING' }, subject: { type: 'STRING' }, amount: { type: 'NUMBER' }, currencySymbol: { type: 'STRING' }, itemDescription: { type: 'STRING' } }, required: ['to', 'recipientName', 'subject', 'amount', 'currencySymbol', 'itemDescription'] } },
+        ],
+      },
+    ],
+    generationConfig,
+    safetySettings
+  });
+
   if (!request.auth) {
     throw new Error("The function must be called while authenticated.");
   }
