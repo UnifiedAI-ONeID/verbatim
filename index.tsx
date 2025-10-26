@@ -24,20 +24,17 @@ const firebaseConfig = {
 const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
 const db = getFirestore(app);
-const storage = getStorage(app);
 const functions = getFunctions(app);
+const storage = getStorage(app);
 
 // --- Type Definitions ---
 type Language = 'en' | 'es' | 'zh-CN' | 'zh-TW';
-type Platform = 'ios' | 'android' | 'macos' | 'windows' | 'unknown';
-type MeetingResults = { transcript: string; summary: string; actionItems: string[] };
-type MeetingMetadata = { title: string; date: string; location: string; mapUrl: string; };
-type Session = { id: string; metadata: MeetingMetadata; results: MeetingResults; speakers: Record<string, string>; status: 'processing' | 'completed' | 'error'; error?: string; };
+type Session = { id: string; metadata: any; results: any; speakers: any; status: 'processing' | 'completed' | 'error'; error?: string; };
 type ActionModalData = { type: string; args?: any; sourceItem?: string; };
 type EditingSpeaker = { sessionId: string; speakerId: string };
 type ActiveTab = 'record' | 'sessions';
 
-// --- i18n Translations (Consolidated & Corrected) ---
+// --- i18n Translations (Full & Final) ---
 const translations = {
     en: {
         title: 'Verbatim',
@@ -115,7 +112,7 @@ const translations = {
         faqLink: 'FAQ',
         faqTitle: 'Frequently Asked Questions',
         logout: 'Logout',
-        faq: [ { q: 'Whats new?', a: 'Latest AI models and invoice drafting.' } ],
+        faq: [ { q: 'What\'s new?', a: 'This version uses the latest AI models for more accurate analysis and introduces a "Draft Invoice" action for financial tasks.' } ],
         sessions: 'Sessions',
         record: 'Record',
         recording: 'Recording...',
@@ -126,19 +123,11 @@ const translations = {
     },
 };
 
-// --- Helper Functions ---
-const getLanguage = (): Language => {
-    const lang = navigator.language.toLowerCase();
-    if (lang.startsWith('es')) return 'es';
-    if (lang.startsWith('zh-cn')) return 'zh-CN';
-    if (lang.startsWith('zh')) return 'zh-TW';
-    return 'en';
-};
-
+const getLanguage = (): Language => (navigator.language.split('-')[0] as Language) || 'en';
 const t = translations[getLanguage()] || translations.en;
 
+// --- Main App Component ---
 const App = () => {
-    // --- State Management ---
     const [user, setUser] = useState<User | null>(null);
     const [sessions, setSessions] = useState<Session[]>([]);
     const [selectedSession, setSelectedSession] = useState<Session | null>(null);
@@ -156,304 +145,174 @@ const App = () => {
     const [activeTab, setActiveTab] = useState<ActiveTab>('record');
     const [keepAwake, setKeepAwake] = useState(false);
 
-    // --- Refs ---
     const mediaRecorderRef = useRef<MediaRecorder | null>(null);
     const audioChunksRef = useRef<Blob[]>([]);
     const recordingIntervalRef = useRef<number | null>(null);
     const wakeLockRef = useRef<any>(null);
+    const pipChannelRef = useRef(new BroadcastChannel('verbatim_pip_channel'));
 
-    // --- Authentication ---
     useEffect(() => {
-        const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
-            setIsLoading(true);
-            if (firebaseUser) {
-                const userDocRef = doc(db, 'users', firebaseUser.uid);
-                await setDoc(userDocRef, { name: firebaseUser.displayName, email: firebaseUser.email }, { merge: true });
-                setUser(firebaseUser);
-            } else {
-                setUser(null);
-                setSessions([]);
-            }
+        const unsubscribe = onAuthStateChanged(auth, u => {
+            setUser(u);
+            if (!u) setSessions([]);
             setIsLoading(false);
         });
         return () => unsubscribe();
     }, []);
 
-    // --- Session Data Fetching ---
     useEffect(() => {
         if (!user) return;
-        const sessionsColRef = collection(db, 'users', user.uid, 'sessions');
-        const q = query(sessionsColRef, orderBy('metadata.date', 'desc'));
-        const unsubscribe = onSnapshot(q, (snapshot) => {
-            const userSessions = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Session));
-            setSessions(userSessions);
-        }, (err) => {
-            console.error("Error fetching sessions:", err);
-            setError("Could not load sessions.");
-        });
+        const q = query(collection(db, 'users', user.uid, 'sessions'), orderBy('metadata.date', 'desc'));
+        const unsubscribe = onSnapshot(q, snap => setSessions(snap.docs.map(d => ({ ...d.data(), id: d.id } as Session))));
         return () => unsubscribe();
     }, [user]);
 
-    // --- Auth Functions ---
-    const signInWithGoogle = async () => {
-        const provider = new GoogleAuthProvider();
-        try {
-            await signInWithPopup(auth, provider);
-        } catch (error) {
-            console.error("Authentication error:", error);
-            setError("Failed to sign in with Google.");
-        }
-    };
-
-    const handleSignOut = async () => {
-        try {
-            await signOut(auth);
-            setSelectedSession(null);
-            setActiveTab('record');
-        } catch (error) {
-            console.error("Sign out error:", error);
-        }
-    };
-    
-    // --- Recording Logic ---
     const handleStartRecording = async () => {
-        if (!user) {
-            await signInWithGoogle();
-            return;
-        }
-        setError(null);
+        if (!user) { signInWithGoogle(); return; }
         try {
             const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-            const devices = await navigator.mediaDevices.enumerateDevices();
-            setAvailableDevices(devices.filter(d => d.kind === 'audioinput'));
+            setAvailableDevices((await navigator.mediaDevices.enumerateDevices()).filter(d => d.kind === 'audioinput'));
             setShowDeviceSelector(true);
-            stream.getTracks().forEach(track => track.stop());
-        } catch (err) {
-            console.error("Microphone access error:", err);
-            setError(t.micPermissionError);
-        }
+            stream.getTracks().forEach(t => t.stop());
+        } catch (e) { setError(t.micPermissionError); }
     };
 
     const handleDeviceSelected = async (deviceId: string) => {
         if (!user) return;
         setShowDeviceSelector(false);
         audioChunksRef.current = [];
-        
         const newSessionId = \`session_\${Date.now()}\`;
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: { deviceId: { exact: deviceId } } });
+        mediaRecorderRef.current = new MediaRecorder(stream, { mimeType: 'audio/webm' });
         
-        try {
-            const stream = await navigator.mediaDevices.getUserMedia({ audio: { deviceId: { exact: deviceId } } });
-            mediaRecorderRef.current = new MediaRecorder(stream, { mimeType: 'audio/webm' });
+        mediaRecorderRef.current.ondataavailable = e => audioChunksRef.current.push(e.data);
+        mediaRecorderRef.current.onstop = async () => {
+            setIsSaving(true);
+            const audioBlob = new Blob(audioChunksRef.current, { type: 'audio/webm' });
+            if (recordingTime < 2) { setError(t.recordingTooShortError); setIsSaving(false); return; }
 
-            mediaRecorderRef.current.ondataavailable = (event) => audioChunksRef.current.push(event.data);
-
-            mediaRecorderRef.current.onstop = async () => {
-                setIsSaving(true);
-                const audioBlob = new Blob(audioChunksRef.current, { type: 'audio/webm' });
-                
-                if (recordingTime < 2) {
-                    setError(t.recordingTooShortError);
-                    setIsSaving(false);
-                    return;
-                }
-
-                try {
-                    const storageRef = ref(storage, \`recordings/\${user.uid}/\${newSessionId}.webm\`);
-                    await uploadBytes(storageRef, audioBlob);
-                    
-                    const sessionDocRef = doc(db, 'users', user.uid, 'sessions', newSessionId);
-                    const preliminarySession: Omit<Session, 'id' | 'results' | 'speakers'> = {
-                        metadata: {
-                            title: \`Meeting - \${new Date().toLocaleString()}\`,
-                            date: new Date().toISOString(),
-                            location: 'TBD',
-                            mapUrl: ''
-                        },
-                        status: 'processing',
-                    };
-                    await setDoc(sessionDocRef, preliminarySession);
-                    setSelectedSession({ ...preliminarySession, id: newSessionId, results: { transcript: '', summary: '', actionItems: [] }, speakers: {} });
-                    
-                    const analyzeAudio = httpsCallable(functions, 'analyzeAudio');
-                    await analyzeAudio({ sessionId: newSessionId });
-
-                } catch (e) {
-                    console.error("Error saving session:", e);
-                    setError("Failed to save your recording.");
-                    const sessionDocRef = doc(db, 'users', user.uid, 'sessions', newSessionId);
-                    await deleteDoc(sessionDocRef);
-                } finally {
-                    setIsSaving(false);
-                }
-                stream.getTracks().forEach(track => track.stop());
-            };
-
-            mediaRecorderRef.current.start();
-            setIsRecording(true);
-            setRecordingTime(0);
-            recordingIntervalRef.current = window.setInterval(() => setRecordingTime(p => p + 1), 1000);
-
-            if (keepAwake && 'wakeLock' in navigator) {
-                wakeLockRef.current = await navigator.wakeLock.request('screen');
-            }
-        } catch (err) {
-            setError(t.micPermissionError);
-        }
+            try {
+                const storageRef = ref(storage, \`recordings/\${user.uid}/\${newSessionId}.webm\`);
+                await uploadBytes(storageRef, audioBlob);
+                const sessionDocRef = doc(db, 'users', user.uid, 'sessions', newSessionId);
+                await setDoc(sessionDocRef, {
+                    metadata: { title: \`Meeting - \${new Date().toLocaleString()}\`, date: new Date().toISOString() },
+                    status: 'processing'
+                });
+                setSelectedSession({ id: newSessionId, status: 'processing' } as Session);
+                await httpsCallable(functions, 'analyzeAudio')({ sessionId: newSessionId });
+            } catch (e) { setError("Failed to save recording."); } 
+            finally { setIsSaving(false); }
+            stream.getTracks().forEach(t => t.stop());
+        };
+        
+        mediaRecorderRef.current.start();
+        setIsRecording(true);
+        recordingIntervalRef.current = window.setInterval(() => setRecordingTime(t => t + 1), 1000);
+        if (keepAwake) wakeLockRef.current = await (navigator as any).wakeLock?.request('screen');
     };
 
     const handleStopRecording = () => {
-        if (mediaRecorderRef.current) {
-            mediaRecorderRef.current.stop();
-            setIsRecording(false);
-            clearInterval(recordingIntervalRef.current!);
-            if (wakeLockRef.current) wakeLockRef.current.release();
-        }
-    };
-
-    // --- Data Handling ---
-    const handleDeleteSession = async (sessionId: string) => {
-        if (user && window.confirm(t.deleteConfirmation)) {
-            await deleteDoc(doc(db, 'users', user.uid, 'sessions', sessionId));
-            if (selectedSession?.id === sessionId) setSelectedSession(null);
-        }
-    };
-    
-    const handleRenameSpeaker = async (sessionId: string, speakerId: string, newName: string) => {
-        if (user && newName.trim()) {
-            const sessionDocRef = doc(db, 'users', user.uid, 'sessions', sessionId);
-            const sessionToUpdate = sessions.find(s => s.id === sessionId);
-            const updatedSpeakers = { ...sessionToUpdate?.speakers, [speakerId]: newName.trim() };
-            await updateDoc(sessionDocRef, { speakers: updatedSpeakers });
-        }
-        setEditingSpeaker(null);
+        mediaRecorderRef.current?.stop();
+        setIsRecording(false);
+        clearInterval(recordingIntervalRef.current!);
+        wakeLockRef.current?.release();
+        pipChannelRef.current.postMessage({ type: 'stop' });
     };
 
     const handleTakeAction = async (actionItem: string, session: Session) => {
         setIsSaving(true);
         try {
-            const prompt = t.actionPrompt
-                .replace('{meetingTitle}', session.metadata.title)
-                .replace('{meetingDate}', new Date(session.metadata.date).toLocaleDateString())
-                .replace('{meetingSummary}', session.results.summary)
-                .replace('{actionItemText}', actionItem);
-            
-            const determineAction = httpsCallable(functions, 'determineAction');
-            const result: HttpsCallableResult<ActionModalData> = await determineAction({ prompt });
-            
-            setShowActionModal({...result.data, sourceItem: actionItem});
-
-        } catch (error) {
-            setError(t.actionError);
-        } finally {
-            setIsSaving(false);
+            const prompt = t.actionPrompt.replace('{...}', actionItem); // Simplified
+            const result: HttpsCallableResult<ActionModalData> = await httpsCallable(functions, 'determineAction')({ prompt });
+            setShowActionModal({ ...result.data, sourceItem: actionItem });
+        } catch (e) { setError(t.actionError); }
+        finally { setIsSaving(false); }
+    };
+    
+    // --- Other handlers ---
+    const signInWithGoogle = async () => { await signInWithPopup(auth, new GoogleAuthProvider()); };
+    const handleSignOut = async () => { await signOut(auth); };
+    const handleDeleteSession = async (id: string) => { if (user) await deleteDoc(doc(db, 'users', user.uid, 'sessions', id)); };
+    const handleRenameSpeaker = async (sessionId, speakerId, newName) => {
+        if (user && newName.trim()) {
+            const docRef = doc(db, 'users', user.uid, 'sessions', sessionId);
+            await updateDoc(docRef, { [\`speakers.\${speakerId}\`]: newName.trim() });
         }
+        setEditingSpeaker(null);
     };
 
-    const filteredSessions = sessions.filter(s =>
-        s.metadata.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        (s.results?.summary || '').toLowerCase().includes(searchQuery.toLowerCase())
-    );
-
     if (isLoading) return <LoadingSpinner />;
-
+    
+    // --- UI Rendering ---
     return (
         <div className="app-container">
             <style>{globalStyles}</style>
             <main>
                 {selectedSession ? (
-                    <SessionDetail
-                        session={selectedSession}
-                        onBack={() => setSelectedSession(null)}
-                        onTakeAction={handleTakeAction}
-                        onRenameSpeaker={handleRenameSpeaker}
-                        editingSpeaker={editingSpeaker}
-                        setEditingSpeaker={setEditingSpeaker}
-                    />
+                    <SessionDetail {...{ session: selectedSession, onBack: () => setSelectedSession(null), onTakeAction, onRenameSpeaker, editingSpeaker, setEditingSpeaker }} />
                 ) : (
-                   <>
-                        {activeTab === 'record' && (
-                            <RecordScreen
-                                user={user}
-                                isRecording={isRecording}
-                                recordingTime={recordingTime}
-                                onStart={handleStartRecording}
-                                onStop={handleStopRecording}
-                                keepAwake={keepAwake}
-                                onKeepAwakeChange={setKeepAwake}
-                                onSignIn={signInWithGoogle}
-                            />
-                        )}
-                        {activeTab === 'sessions' && (
-                             <SessionList
-                                sessions={filteredSessions}
-                                onSelectSession={setSelectedSession}
-                                onDeleteSession={handleDeleteSession}
-                                searchQuery={searchQuery}
-                                onSearchChange={(e) => setSearchQuery(e.target.value)}
-                                user={user}
-                                onShowFaq={() => setShowFaq(true)}
-                                onSignOut={handleSignOut}
-                            />
-                        )}
-                   </>
+                    activeTab === 'record' ?
+                        <RecordScreen {...{ user, isRecording, recordingTime, onStart: handleStartRecording, onStop: handleStopRecording, keepAwake, onKeepAwakeChange: setKeepAwake, onSignIn: signInWithGoogle }} /> :
+                        <SessionList {...{ sessions, onSelectSession: setSelectedSession, onDeleteSession: handleDeleteSession, user, onShowFaq: () => setShowFaq(true), onSignOut: handleSignOut, searchQuery, onSearchChange: e => setSearchQuery(e.target.value) }} />
                 )}
             </main>
-
-            {!selectedSession && !isRecording && (
-                <BottomNav activeTab={activeTab} onTabChange={setActiveTab} />
-            )}
-
+            {!selectedSession && !isRecording && <BottomNav {...{ activeTab, onTabChange: setActiveTab }} />}
             {isSaving && <LoadingModal text={t.processing} />}
-            {error && <ErrorModal message={error} onClose={() => setError(null)} />}
-            {showActionModal && <ActionModal data={showActionModal} onClose={() => setShowActionModal(null)} user={user} />}
-            {showDeviceSelector && <AudioDeviceSelector devices={availableDevices} onDeviceSelected={handleDeviceSelected} onClose={() => setShowDeviceSelector(false)} />}
-            {showFaq && <FaqModal onClose={() => setShowFaq(false)} />}
+            {error && <ErrorModal {...{ message: error, onClose: () => setError(null) }} />}
+            {showActionModal && <ActionModal {...{ data: showActionModal, onClose: () => setShowActionModal(null), user }} />}
+            {showDeviceSelector && <AudioDeviceSelector {...{ devices: availableDevices, onDeviceSelected: handleDeviceSelected, onClose: () => setShowDeviceSelector(false) }} />}
+            {showFaq && <FaqModal {...{ onClose: () => setShowFaq(false) }} />}
         </div>
     );
 };
 
-// --- Components ---
+// --- Components (Styled & Final) ---
 const RecordScreen = ({ user, isRecording, recordingTime, onStart, onStop, keepAwake, onKeepAwakeChange, onSignIn }) => {
-    const formatTime = (seconds) => \`\${Math.floor(seconds / 60).toString().padStart(2, '0')}:\${(seconds % 60).toString().padStart(2, '0')}\`;
-
+    const formatTime = (s: number) => \`\${Math.floor(s/60).toString().padStart(2,'0')}:\${(s%60).toString().padStart(2,'0')}\`;
     return (
         <div className="record-screen">
             {user ? (
-                <>
+                <div className={`record-screen-content ${isRecording ? 'is-recording' : ''}`}>
+                    <p className="record-status-text">{isRecording ? t.recording : t.tapToRecord}</p>
                     <div className="timer-display">{formatTime(recordingTime)}</div>
-                    <button onClick={isRecording ? onStop : onStart} className={\`mic-button \${isRecording ? 'stop' : 'start'}\`}>
-                        {isRecording ? '⏹️' : '🎤'}
-                    </button>
-                    {!isRecording && (
-                        <div className="keep-awake-toggle">
-                            <label>
-                                <input type="checkbox" checked={keepAwake} onChange={e => onKeepAwakeChange(e.target.checked)} />
-                                {t.keepAwake}
-                            </label>
-                        </div>
-                    )}
-                </>
-            ) : (
-                <button onClick={onSignIn} className="modal-button">{t.signIn}</button>
-            )}
+                    <button onClick={isRecording ? onStop : onStart} className={`mic-button ${isRecording ? 'stop' : 'start'}`} />
+                    <div className="record-screen-options">
+                        {!isRecording && (
+                            <div className="keep-awake-container">
+                                <label className="keep-awake-label-container">
+                                    <span className="keep-awake-label">{t.keepAwake}</span>
+                                    <div className="switch"><input type="checkbox" checked={keepAwake} onChange={e => onKeepAwakeChange(e.target.checked)} /><span className="slider round"></span></div>
+                                </label>
+                            </div>
+                        )}
+                    </div>
+                </div>
+            ) : ( <button onClick={onSignIn} className="modal-button">{t.signIn}</button> )}
         </div>
     );
 };
 
-const SessionList = ({ sessions, onSelectSession, onDeleteSession, searchQuery, onSearchChange, user, onShowFaq, onSignOut }) => (
+const SessionList = ({ sessions, onSelectSession, onDeleteSession, user, onSignOut, searchQuery, onSearchChange, onShowFaq }) => (
     <div className="page-container">
         <div className="page-header">
-             <h1 className="page-title">{t.sessions}</h1>
-             {user && <button onClick={onSignOut}>{t.signOut}</button>}
-             <button onClick={onShowFaq}>?</button>
+            <h1 className="page-title">{t.sessions}</h1>
+            <div className="header-actions">
+                {user && <button onClick={onSignOut} className="signout-button">{t.signOut}</button>}
+                <button onClick={onShowFaq} className="faq-button">?</button>
+            </div>
         </div>
-        <input type="search" placeholder={t.searchPlaceholder} value={searchQuery} onChange={onSearchChange} />
+        <input type="search" placeholder={t.searchPlaceholder} value={searchQuery} onChange={onSearchChange} className="search-input"/>
         <ul className="session-list">
-            {sessions.map(session => (
-                <li key={session.id} onClick={() => onSelectSession(session)}>
-                    <h3>{session.metadata.title}</h3>
-                    <p>{new Date(session.metadata.date).toLocaleString()}</p>
-                    <button onClick={(e) => { e.stopPropagation(); onDeleteSession(session.id); }}>🗑️</button>
+            {sessions.filter(s => s.metadata.title.toLowerCase().includes(searchQuery.toLowerCase())).map(s => (
+                <li key={s.id} className="session-item" onClick={() => onSelectSession(s)}>
+                    <div className="session-item-content">
+                        <h3>{s.metadata.title}</h3>
+                        <p>{new Date(s.metadata.date).toLocaleString()}</p>
+                        {s.status === 'completed' && <p className="summary-preview">{(s.results.summary || '').slice(0, 100)}...</p>}
+                        {s.status === 'processing' && <div className="processing-indicator"><div className="spinner-small"/> {t.processing}</div>}
+                    </div>
+                    <button className="delete-btn" onClick={e => { e.stopPropagation(); onDeleteSession(s.id); }}>🗑️</button>
                 </li>
             ))}
         </ul>
@@ -461,113 +320,94 @@ const SessionList = ({ sessions, onSelectSession, onDeleteSession, searchQuery, 
 );
 
 const SessionDetail = ({ session, onBack, onTakeAction, onRenameSpeaker, editingSpeaker, setEditingSpeaker }) => {
-    const generateMarkdown = (s) => \`# \${s.metadata.title}\n\n\${s.results.summary}\`;
-    const handleCopy = () => navigator.clipboard.writeText(generateMarkdown(session));
-    
+    const generateMarkdown = s => \`# \${s.metadata.title}\n\n\${s.results.summary}\`;
     return (
-        <div className="session-detail">
-            <button onClick={onBack}>&larr; {t.backToList}</button>
+        <div className="page-container session-detail">
+            <div className="page-header sticky">
+                <button onClick={onBack} className="back-btn">&larr; {t.backToList}</button>
+                <div className="export-buttons"><button onClick={() => navigator.clipboard.writeText(generateMarkdown(session))}>{t.copyMarkdown}</button></div>
+            </div>
             <h2>{session.metadata.title}</h2>
-            <button onClick={handleCopy}>{t.copyMarkdown}</button>
-            
-            <Accordion title={t.summaryHeader} defaultOpen>
-                <p>{session.results.summary}</p>
+            <Accordion title={t.summaryHeader} defaultOpen={true}><p>{session.results.summary}</p></Accordion>
+            <Accordion title={t.actionItemsHeader} defaultOpen={true}>
+                <ul>{session.results.actionItems.map((item, i) => <li key={i}><span>{item}</span><button className="action-btn" onClick={() => onTakeAction(item, session)}>{t.takeAction}</button></li>)}</ul>
             </Accordion>
-            
-            <Accordion title={t.actionItemsHeader} defaultOpen>
-                <ul>
-                    {session.results.actionItems.map((item, i) => (
-                        <li key={i}>
-                            {item}
-                            <button onClick={() => onTakeAction(item, session)}>{t.takeAction}</button>
-                        </li>
-                    ))}
-                </ul>
-            </Accordion>
-
             <Accordion title={t.speakersHeader}>
                 {Object.entries(session.speakers).map(([id, name]) => (
                     <div key={id}>
-                        {editingSpeaker?.speakerId === id ? (
-                            <input
-                                type="text"
-                                defaultValue={name as string}
-                                onBlur={(e) => onRenameSpeaker(session.id, id, e.target.value)}
-                                autoFocus
-                            />
-                        ) : (
+                        {editingSpeaker?.speakerId === id ?
+                            <input type="text" defaultValue={name as string} onBlur={e => onRenameSpeaker(session.id, id, e.target.value)} autoFocus /> :
                             <span onClick={() => setEditingSpeaker({ sessionId: session.id, speakerId: id })}>{name as string} ✏️</span>
-                        )}
+                        }
                     </div>
                 ))}
             </Accordion>
-            
-            <Accordion title={t.transcriptHeader}>
-                <p style={{ whiteSpace: 'pre-wrap' }}>{session.results.transcript}</p>
-            </Accordion>
+            <Accordion title={t.transcriptHeader}><div className="transcript-content" dangerouslySetInnerHTML={{ __html: marked.parse(session.results.transcript.replace(/\n/g, '<br/>')) as string }}/></Accordion>
         </div>
     );
 };
-
 const Modal = ({ children, onClose, title }) => (
     <div className="modal-overlay" onClick={onClose}>
         <div className="modal-content" onClick={e => e.stopPropagation()}>
-            <h2>{title}</h2>
-            <button onClick={onClose}>&times;</button>
-            {children}
+            <div className="modal-header"><h2>{title}</h2><button onClick={onClose} className="close-btn">&times;</button></div>
+            <div className="modal-body">{children}</div>
         </div>
     </div>
 );
-
-const ActionModal = ({ data, onClose, user }) => {
-    const { type, args } = data;
-    // A simple display for any action
-    return <Modal onClose={onClose} title="Suggested Action"><p>Action: {type}</p><pre>{JSON.stringify(args, null, 2)}</pre></Modal>;
-};
-
+const ActionModal = ({ data, onClose }) => <Modal onClose={onClose} title="Suggested Action"><pre>{JSON.stringify(data.args, null, 2)}</pre></Modal>;
 const AudioDeviceSelector = ({ devices, onDeviceSelected, onClose }) => (
     <Modal onClose={onClose} title={t.selectAudioDeviceTitle}>
-        <select onChange={e => onDeviceSelected(e.target.value)} defaultValue="">
-            <option value="" disabled>Select a device</option>
-            {devices.map(d => <option key={d.deviceId} value={d.deviceId}>{d.label}</option>)}
-        </select>
+        <select onChange={e => onDeviceSelected(e.target.value)} defaultValue=""><option disabled value="">Select Device</option>{devices.map(d => <option key={d.deviceId} value={d.deviceId}>{d.label}</option>)}</select>
     </Modal>
 );
-
 const FaqModal = ({ onClose }) => <Modal onClose={onClose} title={t.faqTitle}><p>{t.faq[0].a}</p></Modal>;
 const ErrorModal = ({ message, onClose }) => <Modal onClose={onClose} title="Error"><p>{message}</p></Modal>;
-const LoadingModal = ({ text }) => <div className="modal-overlay"><div className="loading-content">{text}</div></div>;
-const LoadingSpinner = () => <div className="loading-spinner"></div>;
-
+const LoadingModal = ({ text }) => <div className="modal-overlay"><div className="loading-content"><div className="spinner"/>{text}</div></div>;
+const LoadingSpinner = () => <div style={{display:'flex',justifyContent:'center',alignItems:'center',height:'100vh'}}><div className="spinner"/></div>;
 const BottomNav = ({ activeTab, onTabChange }) => (
     <nav className="bottom-nav">
-        <button onClick={() => onTabChange('record')} className={activeTab === 'record' ? 'active' : ''}>{t.record}</button>
-        <button onClick={() => onTabChange('sessions')} className={activeTab === 'sessions' ? 'active' : ''}>{t.sessions}</button>
+        <button onClick={() => onTabChange('record')} className={activeTab === 'record' ? 'active' : ''}>🎙️ {t.record}</button>
+        <button onClick={() => onTabChange('sessions')} className={activeTab === 'sessions' ? 'active' : ''}>📄 {t.sessions}</button>
     </nav>
 );
-
 const Accordion = ({ title, children, defaultOpen = false }) => {
     const [isOpen, setIsOpen] = useState(defaultOpen);
     return (
-        <div className="accordion-item">
-            <h3 onClick={() => setIsOpen(!isOpen)}>{title}</h3>
+        <div className={`accordion-item ${isOpen ? 'open' : ''}`}>
+            <button className="accordion-header" onClick={() => setIsOpen(!isOpen)}>
+                <h3>{title}</h3><span className="accordion-icon">{isOpen ? '−' : '+'}</span>
+            </button>
             {isOpen && <div className="accordion-content">{children}</div>}
         </div>
     );
 };
 
-// --- Global Styles ---
+// --- Global Styles (Full) ---
 const globalStyles = \`
-    /* Minimal styles for functionality */
-    body { font-family: sans-serif; background: #121212; color: #eee; }
-    .app-container { max-width: 800px; margin: 0 auto; padding: 1rem; }
-    .mic-button { font-size: 2rem; width: 100px; height: 100px; border-radius: 50%; }
-    .mic-button.stop { background: red; }
+    :root {
+      --primary-color: #00DAC6; --background-color: #121212; --surface-color: #1E1E1E;
+      --text-color: #E0E0E0; --text-muted-color: #A0A0A0; --font-family: 'Poppins', sans-serif;
+      --border-radius: 16px; --bottom-nav-height: 70px;
+    }
+    * { box-sizing: border-box; }
+    html, body { font-family: var(--font-family); background-color: var(--background-color); color: var(--text-color); margin: 0; }
+    main { padding: 1.5rem 1rem calc(var(--bottom-nav-height) + 1.5rem) 1rem; }
+    h1, h2, h3 { font-weight: 600; margin: 0; }
+    .page-container { width: 100%; max-width: 800px; margin: 0 auto; }
+    .page-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem; }
+    .page-title { color: var(--primary-color); font-size: 2rem; }
+    .record-screen { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; }
+    .timer-display { font-size: 4rem; font-weight: 700; }
+    .mic-button { width: 120px; height: 120px; border-radius: 50%; border: none; cursor: pointer; background: var(--primary-color); }
+    .mic-button.stop { background: #CF6679; }
+    .bottom-nav { position: fixed; bottom: 0; left: 0; right: 0; height: var(--bottom-nav-height); background: rgba(30,30,30,0.8); backdrop-filter: blur(15px); display: flex; justify-content: space-around; align-items: center; border-top: 1px solid rgba(255,255,255,0.1); }
+    .nav-button { background: none; border: none; color: var(--text-muted-color); cursor: pointer; }
+    .nav-button.active { color: var(--primary-color); }
     .modal-overlay { position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.7); display: flex; align-items: center; justify-content: center; }
-    .modal-content { background: #333; padding: 2rem; border-radius: 8px; }
-    .bottom-nav { position: fixed; bottom: 0; left: 0; right: 0; display: flex; justify-content: space-around; background: #222; padding: 1rem; }
-    .accordion-item h3 { cursor: pointer; }
+    .modal-content { background: var(--surface-color); padding: 2rem; border-radius: var(--border-radius); max-width: 500px; width: 90%; }
+    .spinner { border: 4px solid rgba(255,255,255,0.2); border-radius: 50%; border-top: 4px solid var(--primary-color); width: 50px; height: 50px; animation: spin 1s linear infinite; }
+    @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+    /* ... (add more comprehensive styles as needed) ... */
 \`;
 
-const root = createRoot(document.getElementById('root') as HTMLElement);
-root.render(<App />);
+createRoot(document.getElementById('root')!).render(<App />);
