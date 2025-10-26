@@ -15,11 +15,25 @@ const CreateCalendarEvent = ({ args, t }: any) => {
     );
 };
 
+const DraftEmail = ({ args, t }: any) => {
+    // UI for drafting an email
+    return (
+        <div>
+            <h3>{t.draftEmail}</h3>
+            <p>To: {args.to}</p>
+            <p>Subject: {args.subject}</p>
+            <p>Body: {args.body}</p>
+        </div>
+    );
+};
+
 export const ActionModal = ({ data, onClose, t }: any) => {
     const renderAction = () => {
         switch (data.type) {
             case 'create_calendar_event':
                 return <CreateCalendarEvent args={data.args} t={t} />;
+            case 'draft_email':
+                return <DraftEmail args={data.args} t={t} />;
             default:
                 return <pre>{JSON.stringify(data.args, null, 2)}</pre>;
         }
