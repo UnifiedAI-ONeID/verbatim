@@ -2,7 +2,7 @@
 import React from 'react';
 import { LoadingSpinner } from './LoadingSpinner';
 
-export const SessionList = ({ sessions, onSelectSession, onDeleteSession, user, onSignOut, searchQuery, onSearchChange, onShowFaq, isLoading, t, language, onLanguageChange }: any) => (
+export const SessionList = ({ sessions, onSelectSession, onDeleteSession, user, onSignOut, searchQuery, onSearchChange, onShowFaq, isLoading, t, language, onLanguageChange, onThemeChange, theme, onShowFeedback }: any) => (
     <div className="page-container">
         <div className="page-header">
             <h1 className="page-title">{t.sessions}</h1>
@@ -13,8 +13,12 @@ export const SessionList = ({ sessions, onSelectSession, onDeleteSession, user, 
                     <option value="zh-CN">中文 (简体)</option>
                     <option value="zh-TW">中文 (繁體)</option>
                 </select>
+                <button onClick={onThemeChange} className="theme-button">
+                    {theme === 'light' ? '🌞' : '🌜'}
+                </button>
                 {user && <button onClick={onSignOut} className="signout-button">{t.signOut}</button>}
                 <button onClick={onShowFaq} className="faq-button">?</button>
+                <button onClick={onShowFeedback} className="feedback-button">📣</button>
             </div>
         </div>
         <input type="search" placeholder={t.searchPlaceholder} value={searchQuery} onChange={onSearchChange} className="search-input"/>

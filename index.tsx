@@ -21,6 +21,7 @@ import { AudioDeviceSelector } from './src/components/AudioDeviceSelector';
 import { FaqModal } from './src/components/FaqModal';
 import { ErrorModal } from './src/components/ErrorModal';
 import { LoadingModal } from './src/components/LoadingModal';
+import { FeedbackModal } from './src/components/FeedbackModal';
 
 // --- Firebase Configuration ---
 const firebaseConfig = {
@@ -45,6 +46,7 @@ type Session = { id: string; metadata: any; results: any; speakers: any; status:
 type ActionModalData = { type: string; args?: any; sourceItem?: string; };
 type EditingSpeaker = { sessionId: string; speakerId: string };
 type ActiveTab = 'record' | 'sessions';
+type Theme = 'light' | 'dark';
 
 // --- i18n Translations (Full & Final) ---
 const translations = {
@@ -133,6 +135,9 @@ const translations = {
         signOut: 'Sign Out',
         signInToView: 'Sign in to view sessions',
         install: 'Install App',
+        theme: 'Theme',
+        feedback: 'Feedback',
+        submitFeedback: 'Submit Feedback',
     },
 };
 
@@ -161,6 +166,8 @@ const App = () => {
     const [showWelcome, setShowWelcome] = useState(false);
     const [language, setLanguage] = useState<Language>(getLanguage());
     const [installPrompt, setInstallPrompt] = useState<any>(null);
+    const [theme, setTheme] = useState<Theme>('dark');
+    const [showFeedback, setShowFeedback] = useState(false);
 
     const t = translations[language] || translations.en;
 
@@ -298,6 +305,10 @@ const App = () => {
         setShowFaq(!showFaq);
     };
 
+    const handleToggleFeedback = () => {
+        setShowFeedback(!showFeedback);
+    };
+
     const handleSearchChange = (event: React.ChangeEvent<HTMLInputElement>) => {
         setSearchQuery(event.target.value);
     };
@@ -355,6 +366,15 @@ const App = () => {
             });
         }
     };
+
+    const handleThemeChange = () => {
+        setTheme(theme === 'light' ? 'dark' : 'light');
+    };
+
+    const handleFeedbackSubmit = (feedback: string) => {
+        // You can handle the feedback submission here, e.g., send it to a server or log it.
+        console.log('Feedback submitted:', feedback);
+    };
     
     // --- Other handlers ---
     const signInWithGoogle = async () => { await signInWithPopup(auth, new GoogleAuthProvider()); };
@@ -364,7 +384,7 @@ const App = () => {
     
     // --- UI Rendering ---
     return (
-        <div className="app-container">
+        <div className={`app-container ${theme}`}>
             <style>{globalStyles}</style>
             <main>
                 {selectedSession ? (
@@ -372,13 +392,13 @@ const App = () => {
                 ) : (
                     activeTab === 'record' ?
                         <RecordScreen {...{ user, isRecording, recordingTime, onStart: handleStartRecording, onStop: handleStopRecording, keepAwake, onKeepAwakeChange: handleKeepAwakeChange, onSignIn: signInWithGoogle, onTogglePiP: handleTogglePiP, t, onInstall: handleInstallClick, showInstallButton: !!installPrompt }} /> :
-                        <SessionList {...{ sessions, onSelectSession: setSelectedSession, onDeleteSession: handleDeleteConfirmation, user, onShowFaq: handleToggleFaq, onSignOut: handleSignOut, searchQuery, onSearchChange: handleSearchChange, isLoading, t, language, onLanguageChange: handleLanguageChange }} />
+                        <SessionList {...{ sessions, onSelectSession: setSelectedSession, onDeleteSession: handleDeleteConfirmation, user, onShowFaq: handleToggleFaq, onSignOut: handleSignOut, searchQuery, onSearchChange: handleSearchChange, isLoading, t, language, onLanguageChange: handleLanguageChange, onThemeChange: handleThemeChange, theme, onShowFeedback: handleToggleFeedback }} />
                 )}
             </main>
             {!selectedSession && !isRecording && <BottomNav {...{ activeTab, onTabChange: setActiveTab, t }} />}
             {isSaving && <LoadingModal text={t.processing} />}
             {error && <ErrorModal {...{ message: error, onClose: () => setError(null), t }} />}
-            {showActionModal && <ActionModal {...{ data: showActionModal, onClose: () => setShowActionModal(null), t }} />}
+            {showActionModal && <ActionModal {...{ data: showActionModal, onClose: () => setShowActionModal(null), t, user }} />}
             {showDeviceSelector && <AudioDeviceSelector {...{ devices: availableDevices, onDeviceSelected: handleDeviceSelected, onClose: () => setShowDeviceSelector(false), t }} />}
             {showFaq && <FaqModal {...{ onClose: handleToggleFaq, t }} />}
             {showDeleteModal && (
@@ -394,35 +414,52 @@ const App = () => {
                     <p>{t.welcomeSubtext}</p>
                 </Modal>
             )}
+            {showFeedback && <FeedbackModal onClose={handleToggleFeedback} onSubmit={handleFeedbackSubmit} t={t} />}
         </div>
     );
 };
 
 // --- Global Styles (Full) ---
-const globalStyles = " " +
-"    :root {" +
-"      --primary-color: #00DAC6; --background-color: #121212; --surface-color: #1E1E1E;" +
-"      --text-color: #E0E0E0; --text-muted-color: #A0A0A0; --font-family: 'Poppins', sans-serif;" +
-"      --border-radius: 16px; --bottom-nav-height: 70px;" +
-"    }" +
-"    * { box-sizing: border-box; }" +
-"    html, body { font-family: var(--font-family); background-color: var(--background-color); color: var(--text-color); margin: 0; }" +
-"    main { padding: 1.5rem 1rem calc(var(--bottom-nav-height) + 1.5rem) 1rem; }" +
-"    h1, h2, h3 { font-weight: 600; margin: 0; }" +
-"    .page-container { width: 100%; max-width: 800px; margin: 0 auto; }" +
-"    .page-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem; }" +
-"    .page-title { color: var(--primary-color); font-size: 2rem; }" +
-"    .record-screen { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; }" +
-"    .timer-display { font-size: 4rem; font-weight: 700; }" +
-"    .mic-button { width: 120px; height: 120px; border-radius: 50%; border: none; cursor: pointer; background: var(--primary-color); }" +
-"    .mic-button.stop { background: #CF6679; }" +
-"    .bottom-nav { position: fixed; bottom: 0; left: 0; right: 0; height: var(--bottom-nav-height); background: rgba(30,30,30,0.8); backdrop-filter: blur(15px); display: flex; justify-content: space-around; align-items: center; border-top: 1px solid rgba(255,255,255,0.1); }" +
-"    .nav-button { background: none; border: none; color: var(--text-muted-color); cursor: pointer; }" +
-"    .nav-button.active { color: var(--primary-color); }" +
-"    .modal-overlay { position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.7); display: flex; align-items: center; justify-content: center; }" +
-"    .modal-content { background: var(--surface-color); padding: 2rem; border-radius: var(--border-radius); max-width: 500px; width: 90%; }" +
-"    .spinner { border: 4px solid rgba(255,255,255,0.2); border-radius: 50%; border-top: 4px solid var(--primary-color); width: 50px; height: 50px; animation: spin 1s linear infinite; }" +
-"    @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }" +
-" ";
+const globalStyles = `
+    :root {
+      --primary-color: #00DAC6;
+      --font-family: 'Poppins', sans-serif;
+      --border-radius: 16px;
+      --bottom-nav-height: 70px;
+    }
+
+    .dark {
+      --background-color: #121212;
+      --surface-color: #1E1E1E;
+      --text-color: #E0E0E0;
+      --text-muted-color: #A0A0A0;
+    }
+
+    .light {
+      --background-color: #FFFFFF;
+      --surface-color: #F5F5F5;
+      --text-color: #000000;
+      --text-muted-color: #666666;
+    }
+
+    * { box-sizing: border-box; }
+    html, body { font-family: var(--font-family); background-color: var(--background-color); color: var(--text-color); margin: 0; }
+    main { padding: 1.5rem 1rem calc(var(--bottom-nav-height) + 1.5rem) 1rem; }
+    h1, h2, h3 { font-weight: 600; margin: 0; }
+    .page-container { width: 100%; max-width: 800px; margin: 0 auto; }
+    .page-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem; }
+    .page-title { color: var(--primary-color); font-size: 2rem; }
+    .record-screen { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; }
+    .timer-display { font-size: 4rem; font-weight: 700; }
+    .mic-button { width: 120px; height: 120px; border-radius: 50%; border: none; cursor: pointer; background: var(--primary-color); }
+    .mic-button.stop { background: #CF6679; }
+    .bottom-nav { position: fixed; bottom: 0; left: 0; right: 0; height: var(--bottom-nav-height); background: rgba(30,30,30,0.8); backdrop-filter: blur(15px); display: flex; justify-content: space-around; align-items: center; border-top: 1px solid rgba(255,255,255,0.1); }
+    .nav-button { background: none; border: none; color: var(--text-muted-color); cursor: pointer; }
+    .nav-button.active { color: var(--primary-color); }
+    .modal-overlay { position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.7); display: flex; align-items: center; justify-content: center; }
+    .modal-content { background: var(--surface-color); padding: 2rem; border-radius: var(--border-radius); max-width: 500px; width: 90%; }
+    .spinner { border: 4px solid rgba(255,255,255,0.2); border-radius: 50%; border-top: 4px solid var(--primary-color); width: 50px; height: 50px; animation: spin 1s linear infinite; }
+    @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+`;
 
 createRoot(document.getElementById('root')!).render(<App />);
