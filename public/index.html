@@ -41,13 +41,9 @@
       -webkit-font-smoothing: antialiased;
       -moz-osx-font-smoothing: grayscale;
       -webkit-text-size-adjust: 100%;
-    }
-    body {
-      margin: 0;
       font-family: 'Poppins', sans-serif;
-      min-height: 100dvh;
-      transition: background-color 0.3s ease, color 0.3s ease;
     }
+    
     html[data-theme='dark'] {
        --bg: #0D0D0D;
        --bg-2: #1a1a1a;
@@ -58,16 +54,18 @@
        --text-tertiary: #888;
        --border-color: #333;
        --border-color-2: #444;
-       --accent-dark-theme: #00DAC6;
-       --accent-text-dark-theme: #0D0D0D;
-       --accent-light-theme: #007AFF;
-       --accent-text-light-theme: #FFFFFF;
+       --accent-primary: #00DAC6;
+       --accent-primary-text: #0D0D0D;
+       --accent-secondary: #007AFF;
+       --accent-secondary-text: #FFFFFF;
        --danger: #FF4136;
        --danger-text: #E0E0E0;
        --danger-border: #900;
        --danger-bg: #500;
+       --danger-bg-light: #442222;
        color-scheme: dark;
     }
+
     html[data-theme='light'] {
        --bg: #F5F5F7;
        --bg-2: #FFFFFF;
@@ -78,20 +76,49 @@
        --text-tertiary: #666;
        --border-color: #D2D2D7;
        --border-color-2: #C7C7CC;
-       --accent-dark-theme: #00DAC6;
-       --accent-text-dark-theme: #0D0D0D;
-       --accent-light-theme: #007AFF;
-       --accent-text-light-theme: #FFFFFF;
+       --accent-primary: #00DAC6;
+       --accent-primary-text: #0D0D0D;
+       --accent-secondary: #007AFF;
+       --accent-secondary-text: #FFFFFF;
        --danger: #D70015;
-       --danger-text: #FFFFFF;
+       --danger-text: #D70015;
        --danger-border: #D70015;
        --danger-bg: #FFE5E5;
+       --danger-bg-light: #FFE5E5;
        color-scheme: light;
     }
+
+    html[data-theme='matrix'] {
+       --bg: #000000;
+       --bg-2: #050505;
+       --bg-3: #101010;
+       --bg-accent: #080808;
+       --text-primary: #00FF41; /* Matrix Green */
+       --text-secondary: #00C030;
+       --text-tertiary: #00A028;
+       --border-color: #008F28;
+       --border-color-2: #00AF30;
+       --accent-primary: #00FF41;
+       --accent-primary-text: #000000;
+       --accent-secondary: #00FF41;
+       --accent-secondary-text: #000000;
+       --danger: #00FF41;
+       --danger-text: #000000;
+       --danger-border: #00FF41;
+       --danger-bg: #005010;
+       --danger-bg-light: #005010;
+       color-scheme: dark;
+       font-family: 'Courier New', Courier, monospace;
+    }
+    
     body {
+      margin: 0;
+      min-height: 100dvh;
       background-color: var(--bg);
       color: var(--text-primary);
+      transition: background-color 0.3s ease, color 0.3s ease;
     }
+
     #root:empty::before {
       content: "Loading...";
       display: flex;

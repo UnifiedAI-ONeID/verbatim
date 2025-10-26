@@ -1,5 +1,6 @@
 
-const CACHE_NAME = 'verbatim-v4';
+
+const CACHE_NAME = 'verbatim-v5';
 const urlsToCache = [
   '/',
   '/index.html',

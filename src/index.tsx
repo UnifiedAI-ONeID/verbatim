@@ -11,7 +11,7 @@ import { getFunctions, httpsCallable } from "firebase/functions";
 
 // --- Type Definitions ---
 type Language = 'en' | 'es' | 'zh-CN' | 'zh-TW';
-type Theme = 'light' | 'dark';
+type Theme = 'light' | 'dark' | 'matrix';
 type Platform = 'ios' | 'android' | 'macos' | 'windows' | 'unknown';
 type MeetingResults = { transcript: string; summary: string; actionItems: string[] };
 type MeetingMetadata = { title: string; date: string; location: string; mapUrl: string; };
@@ -41,6 +41,7 @@ const translations = {
         actionItemsHeader: '📌 Action Items',
         noTranscript: 'Could not extract transcript.',
         noSummary: 'Could not extract summary.',
+        noActionItems: 'No action items were identified.',
         takeAction: 'Take Action ✨',
         noActionDetermined: 'Could not determine a specific action for this item. You can handle it manually.',
         createCalendarEvent: 'Create Google Calendar Event',
@@ -128,8 +129,9 @@ const translations = {
         actionItemsHeader: '📌 Puntos de Acción',
         noTranscript: 'No se pudo extraer la transcripción.',
         noSummary: 'No se pudo extraer el resumen.',
+        noActionItems: 'No se identificaron puntos de acción.',
         takeAction: 'Tomar Acción ✨',
-        noActionDetermined: 'No se pudo determinar una acción específica para este ítem. Puedes gestionarlo manually.',
+        noActionDetermined: 'No se pudo determinar una acción específica para este ítem. Puedes gestionarlo manualmente.',
         createCalendarEvent: 'Crear Evento en Google Calendar',
         titleLabel: 'Título:',
         descriptionLabel: 'Descripción:',
@@ -215,6 +217,7 @@ const translations = {
         actionItemsHeader: '📌 行动项',
         noTranscript: '无法提取文字记录。',
         noSummary: '无法提取摘要。',
+        noActionItems: '未识别出任何行动项。',
         takeAction: '执行操作 ✨',
         noActionDetermined: '无法为此项目确定具体操作。请手动处理。',
         createCalendarEvent: '创建谷歌日历活动',
@@ -302,6 +305,7 @@ const translations = {
         actionItemsHeader: '📌 行動項',
         noTranscript: '無法擷取文字記錄。',
         noSummary: '無法擷取摘要。',
+        noActionItems: '未識別出任何行動項。',
         takeAction: '執行操作 ✨',
         noActionDetermined: '無法為此項目確定具體操作。請手動處理。',
         createCalendarEvent: '建立 Google 日曆活動',
@@ -376,6 +380,7 @@ const translations = {
 
 // --- Firebase Initialization ---
 const firebaseConfig = {
+  // Replace with your own Firebase project configuration.
   apiKey: "YOUR_API_KEY",
   authDomain: "YOUR_AUTH_DOMAIN",
   projectId: "YOUR_PROJECT_ID",
@@ -400,18 +405,25 @@ const tools: FunctionDeclaration[] = [
 ];
 
 // --- Contexts for Theme and Language ---
-const ThemeContext = createContext<{ theme: Theme; toggleTheme: () => void }>({ theme: 'dark', toggleTheme: () => {} });
+const ThemeContext = createContext<{ theme: Theme; setTheme: (theme: Theme) => void; toggleTheme: () => void }>({ theme: 'dark', setTheme: () => {}, toggleTheme: () => {} });
 const LanguageContext = createContext<{ lang: Language; setLang: (lang: Language) => void; t: typeof translations.en }>({ lang: 'en', setLang: () => {}, t: translations.en });
 
 const ThemeProvider = ({ children }: { children?: React.ReactNode }) => {
-    const [theme, setTheme] = useState<Theme>(() => (localStorage.getItem('verbatim_theme') as Theme) || 'dark');
+    const [theme, setTheme] = useState<Theme>(() => {
+        const storedTheme = localStorage.getItem('verbatim_theme') as Theme;
+        if (storedTheme === 'matrix') return 'dark'; // Don't load easter egg on refresh
+        return storedTheme || 'dark';
+    });
     useEffect(() => {
         document.documentElement.setAttribute('data-theme', theme);
-        localStorage.setItem('verbatim_theme', theme);
-        document.querySelector('meta[name="theme-color"]')?.setAttribute('content', theme === 'dark' ? '#0D0D0D' : '#F5F5F7');
+        if (theme !== 'matrix') {
+            localStorage.setItem('verbatim_theme', theme);
+        }
+        const themeColor = theme === 'dark' ? '#0D0D0D' : theme === 'light' ? '#F5F5F7' : '#000000';
+        document.querySelector('meta[name="theme-color"]')?.setAttribute('content', themeColor);
     }, [theme]);
     const toggleTheme = () => setTheme(prev => prev === 'light' ? 'dark' : 'light');
-    return <ThemeContext.Provider value={{ theme, toggleTheme }}>{children}</ThemeContext.Provider>;
+    return <ThemeContext.Provider value={{ theme, setTheme, toggleTheme }}>{children}</ThemeContext.Provider>;
 };
 
 const LanguageProvider = ({ children }: { children?: React.ReactNode }) => {
@@ -449,7 +461,6 @@ const useKeepAwake = () => {
     return { requestWakeLock, releaseWakeLock };
 };
 
-
 // --- Main App Component ---
 const App = () => {
     const [user, setUser] = useState<User | null>(null);
@@ -468,11 +479,31 @@ const App = () => {
     const [activeTab, setActiveTab] = useState<ActiveTab>('record');
     const [keepAwakeEnabled, setKeepAwakeEnabled] = useState(() => JSON.parse(localStorage.getItem('verbatim_keepAwake') || 'false'));
     const { t } = useLocalization();
+    const { setTheme } = useTheme();
     const { requestWakeLock, releaseWakeLock } = useKeepAwake();
     
     const mediaRecorderRef = useRef<MediaRecorder | null>(null);
     const audioChunksRef = useRef<Blob[]>([]);
     const recordingIntervalRef = useRef<number | null>(null);
+    const konamiIndexRef = useRef(0);
+
+    // Easter Egg: Konami Code
+    useEffect(() => {
+        const konamiCode = ['arrowup', 'arrowup', 'arrowdown', 'arrowdown', 'arrowleft', 'arrowright', 'arrowleft', 'arrowright', 'b', 'a'];
+        const handleKeyDown = (e: KeyboardEvent) => {
+            if (e.key.toLowerCase() === konamiCode[konamiIndexRef.current]) {
+                konamiIndexRef.current++;
+                if (konamiIndexRef.current === konamiCode.length) {
+                    setTheme('matrix');
+                    konamiIndexRef.current = 0;
+                }
+            } else {
+                konamiIndexRef.current = 0;
+            }
+        };
+        window.addEventListener('keydown', handleKeyDown);
+        return () => window.removeEventListener('keydown', handleKeyDown);
+    }, [setTheme]);
 
     const signInWithGoogle = useCallback(async (): Promise<User | null> => {
         setError(null);
@@ -485,7 +516,6 @@ const App = () => {
             switch (error.code) {
                 case 'auth/popup-closed-by-user':
                 case 'auth/cancelled-popup-request':
-                    // Not an error to display to the user.
                     break;
                 case 'auth/popup-blocked':
                     setError(t.signInPopupBlockedError);
@@ -524,8 +554,12 @@ const App = () => {
             const pos = await new Promise<GeolocationPosition>((res, rej) => navigator.geolocation.getCurrentPosition(res, rej, { timeout: 5000 })).catch(() => null);
             let locationName = t.locationUnavailable, mapUrl = '';
             if (pos) {
-                const res = await fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${pos.coords.latitude}&lon=${pos.coords.longitude}`);
-                if (res.ok) { const data = await res.json(); locationName = data.display_name; mapUrl = `https://www.google.com/maps?q=${pos.coords.latitude},${pos.coords.longitude}`; }
+                try {
+                    const res = await fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${pos.coords.latitude}&lon=${pos.coords.longitude}`);
+                    if (res.ok) { const data = await res.json(); locationName = data.display_name; mapUrl = `https://www.google.com/maps?q=${pos.coords.latitude},${pos.coords.longitude}`; }
+                } catch (e) {
+                    console.warn("Could not fetch location name", e);
+                }
             }
 
             const preliminarySession: Omit<Session, 'id' | 'results' | 'speakers'> = { metadata: { title: `Meeting - ${new Date().toLocaleString()}`, date: new Date().toISOString(), location: locationName, mapUrl }, status: 'processing' };
@@ -638,7 +672,7 @@ const App = () => {
             <Header user={user} onSignIn={signInWithGoogle} />
             <main style={styles.mainContent}>{renderContent()}</main>
             {!selectedSession && <BottomNav activeTab={activeTab} setActiveTab={(tab) => {setSelectedSession(null); setActiveTab(tab)}} />}
-            {showDeviceSelector && <Modal title={t.selectAudioDeviceTitle} onClose={() => setShowDeviceSelector(false)}><p>{t.selectAudioDeviceInstruction}</p><ul style={styles.deviceList}>{availableDevices.map(d => <li key={d.deviceId} style={styles.deviceItem} onClick={() => handleStartRecording(d.deviceId)}>{d.label || `Mic ${availableDevices.indexOf(d) + 1}`}</li>)}</ul></Modal>}
+            {showDeviceSelector && <Modal title={t.selectAudioDeviceTitle} onClose={() => setShowDeviceSelector(false)}><p>{t.selectAudioDeviceInstruction}</p><ul style={styles.deviceList}>{availableDevices.map((d, i) => <li key={d.deviceId} style={styles.deviceItem} onClick={() => handleStartRecording(d.deviceId)}>{d.label || `Mic ${i + 1}`}</li>)}</ul></Modal>}
             {showActionModal && <ActionModal data={showActionModal} user={user} onClose={() => setShowActionModal(null)} />}
         </div>
     );
@@ -650,7 +684,7 @@ const Header = ({ user, onSignIn }: { user: User | null; onSignIn: () => void; }
     const { theme, toggleTheme } = useTheme();
     return (
         <header style={styles.header}>
-            <div style={styles.logo}><svg width="32" height="32" viewBox="0 0 192 192" fill="none" xmlns="http://www.w3.org/2000/svg"><rect width="192" height="192" rx="48" fill={theme === 'dark' ? '#181818' : '#E8E8ED'}/><path d="M48 68L80 124L112 68" stroke="var(--accent-dark-theme)" strokeWidth="16" strokeLinecap="round"/><path d="M112 124V68" stroke="var(--accent-dark-theme)" strokeWidth="16" strokeLinecap="round"/><path d="M144 68L144 124" stroke={theme === 'dark' ? "white":"black"} strokeOpacity="0.6" strokeWidth="10" strokeLinecap="round"/><path d="M128 80L128 112" stroke={theme === 'dark' ? "white":"black"} strokeOpacity="0.6" strokeWidth="10" strokeLinecap="round"/></svg><span style={{color: 'var(--accent-dark-theme)'}}>{t.title}</span></div>
+            <div style={styles.logo}><svg width="32" height="32" viewBox="0 0 192 192" fill="none" xmlns="http://www.w3.org/2000/svg"><rect width="192" height="192" rx="48" fill="var(--bg-3)"/><path d="M48 68L80 124L112 68" stroke="var(--accent-primary)" strokeWidth="16" strokeLinecap="round"/><path d="M112 124V68" stroke="var(--accent-primary)" strokeWidth="16" strokeLinecap="round"/><path d="M144 68L144 124" stroke="var(--text-secondary)" strokeOpacity="0.6" strokeWidth="10" strokeLinecap="round"/><path d="M128 80L128 112" stroke="var(--text-secondary)" strokeOpacity="0.6" strokeWidth="10" strokeLinecap="round"/></svg><span style={{color: 'var(--accent-primary)'}}>{t.title}</span></div>
             <div style={styles.headerControls}>
                  <select value={lang} onChange={e => setLang(e.target.value as Language)} style={styles.headerSelect} aria-label={t.language}><option value="en">EN</option><option value="es">ES</option><option value="zh-CN">简体</option><option value="zh-TW">繁體</option></select>
                 <button onClick={toggleTheme} style={styles.themeToggleButton} aria-label={`${t.theme}: ${theme}`}>{theme === 'light' ? '🌙' : '☀️'}</button>
@@ -668,7 +702,7 @@ const RecordView = ({ isRecording, recordingTime, isSaving, error, user, onStopR
             <div style={styles.recordButtonContainer}>
                 <button style={{ ...styles.recordButton, ...(isRecording ? styles.recordButtonRecording : {}) }} onClick={isRecording ? onStopRecording : onStartRecordingClick} aria-label={isRecording ? t.stopRecording : t.startRecording}>{isRecording ? '⏹️' : '🎤'}</button>
                 <p style={styles.recordButtonText}>{isRecording ? formatTime(recordingTime) : (user ? t.tapToRecord : t.signInToRecord)}</p>
-                 <div style={styles.statusContainer}>{isSaving ? <p>{t.processing}</p> : error ? <p style={styles.errorText}>{error}</p> : null}</div>
+                 <div style={styles.statusContainer} aria-live="polite">{isSaving ? <p>{t.processing}</p> : error ? <p style={styles.errorText}>{error}</p> : null}</div>
             </div>
             <footer style={styles.recordFooter}>
                  <label style={styles.toggleSwitchLabel}><span>{t.keepAwake}</span><div style={styles.toggleSwitch}><input type="checkbox" checked={keepAwake} onChange={() => setKeepAwake(!keepAwake)} /><span className="slider"></span></div></label>
@@ -683,7 +717,7 @@ const SessionsListView = ({ sessions, onSelectSession, searchQuery, setSearchQue
     return (
         <div style={styles.sessionsView}>
             <div style={styles.sessionsHeader}><h2>{t.recentSessions}</h2><input type="search" placeholder={t.searchPlaceholder} value={searchQuery} onChange={e => setSearchQuery(e.target.value)} style={styles.searchInput} /></div>
-            {filtered.length > 0 ? <ul style={styles.sessionsList}>{filtered.map((s: Session) => <li key={s.id} style={styles.sessionItem} onClick={() => onSelectSession(s)} role="button"><div><strong>{s.metadata.title}</strong><span style={styles.sessionItemDate}>{new Date(s.metadata.date).toLocaleDateString()}</span></div><div style={styles.sessionItemStatus}>{s.status==='processing' && <span style={styles.processingChip}>{t.processing}</span>}{s.status==='error'&&<span style={styles.errorChip}>Error</span>}></div></li>)}</ul> : <div style={styles.welcomeContainer}><h3>{t.welcomeMessage}</h3><p>{t.welcomeSubtext}</p></div>}
+            {filtered.length > 0 ? <ul style={styles.sessionsList}>{filtered.map((s: Session) => <li key={s.id} style={styles.sessionItem} onClick={() => onSelectSession(s)} role="button" tabIndex={0}><div><strong>{s.metadata.title}</strong><span style={styles.sessionItemDate}>{new Date(s.metadata.date).toLocaleDateString()}</span></div><div style={styles.sessionItemStatus}>{s.status==='processing' && <span style={styles.processingChip}>{t.processing}</span>}{s.status==='error'&&<span style={styles.errorChip}>Error</span>}></div></li>)}</ul> : <div style={styles.welcomeContainer}><h3>{t.welcomeMessage}</h3><p>{t.welcomeSubtext}</p></div>}
         </div>
     );
 };
@@ -704,7 +738,7 @@ const SessionDetailView = ({ session, onBack, onDelete, onTakeAction, onUpdateSp
             {session.status === 'completed' && session.results ? (
                 <div>
                     <Accordion title={t.summaryHeader} defaultOpen><div style={styles.contentBlock} dangerouslySetInnerHTML={{ __html: marked.parse(session.results.summary || t.noSummary) }}></div></Accordion>
-                    <Accordion title={t.actionItemsHeader} defaultOpen><ul style={styles.actionItemsList}>{session.results.actionItems.length > 0 ? session.results.actionItems.map((item:string, i:number) => <li key={i} style={styles.actionItem}><span>{item}</span><button style={styles.takeActionButton} onClick={() => onTakeAction(item, session)}>{t.takeAction}</button></li>) : <li>{t.noActionDetermined}</li>}</ul></Accordion>
+                    <Accordion title={t.actionItemsHeader} defaultOpen><ul style={styles.actionItemsList}>{session.results.actionItems.length > 0 ? session.results.actionItems.map((item:string, i:number) => <li key={i} style={styles.actionItem}><span>{item}</span><button style={styles.takeActionButton} onClick={() => onTakeAction(item, session)}>{t.takeAction}</button></li>) : <li>{t.noActionItems}</li>}</ul></Accordion>
                     <Accordion title={t.speakersHeader}><ul style={styles.speakersList}>{Object.entries(session.speakers || {}).map(([id, name]) => <li key={id} style={styles.speakerItem}>{editingSpeaker?.speakerId === id ? <form onSubmit={e => { e.preventDefault(); onUpdateSpeakerName(session.id, id, (e.target as any).speakerName.value); }}><input name="speakerName" type="text" defaultValue={name as string} onBlur={e => onUpdateSpeakerName(session.id, id, e.target.value)} autoFocus style={styles.speakerInput} /></form> : <><span>{name as string}</span><button onClick={() => setEditingSpeaker({ sessionId: session.id, speakerId: id })} style={styles.editSpeakerButton}>✏️</button></>}</li>)}</ul></Accordion>
                     <Accordion title={t.transcriptHeader}><div style={styles.transcriptContainer}>{renderTranscript()}</div></Accordion>
                 </div>
@@ -746,7 +780,8 @@ const ActionModal = ({ data, user, onClose }: { data: ActionModalData, user: Use
             default: return <p>{t.noActionDetermined}</p>;
         }
     };
-    const title = { create_calendar_event: t.createCalendarEvent, draft_email: t.draftEmail, draft_invoice_email: t.draftInvoiceEmail, initiate_phone_call: t.initiatePhoneCall, create_google_doc: t.createDocument }[type] || t.takeAction;
+    const titleMap: Record<string, string> = { create_calendar_event: t.createCalendarEvent, draft_email: t.draftEmail, draft_invoice_email: t.draftInvoiceEmail, initiate_phone_call: t.initiatePhoneCall, create_google_doc: t.createDocument };
+    const title = titleMap[type] || t.takeAction;
     return <Modal title={title} onClose={onClose}><p style={styles.sourceItemText}><em>"{sourceItem}"</em></p>{content()}</Modal>;
 };
 
@@ -765,19 +800,19 @@ const styles: { [key: string]: CSSProperties } = {
     logo: { display: 'flex', alignItems: 'center', gap: '10px', fontSize: '1.5rem', fontWeight: 'bold' },
     recordView: { flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'center', padding: '16px', boxSizing: 'border-box' },
     recordButtonContainer: { display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', flexGrow: 1, textAlign: 'center' },
-    recordButton: { width: '150px', height: '150px', borderRadius: '50%', border: 'none', backgroundColor: 'var(--accent-dark-theme)', color: 'var(--accent-text-dark-theme)', fontSize: '4rem', cursor: 'pointer', display: 'flex', justifyContent: 'center', alignItems: 'center', transition: 'all 0.3s ease', boxShadow: '0 0 20px color-mix(in srgb, var(--accent-dark-theme) 40%, transparent)' },
+    recordButton: { width: '150px', height: '150px', borderRadius: '50%', border: 'none', backgroundColor: 'var(--accent-primary)', color: 'var(--accent-primary-text)', fontSize: '4rem', cursor: 'pointer', display: 'flex', justifyContent: 'center', alignItems: 'center', transition: 'all 0.3s ease', boxShadow: '0 0 20px color-mix(in srgb, var(--accent-primary) 40%, transparent)' },
     recordButtonRecording: { backgroundColor: 'var(--danger)', boxShadow: '0 0 25px color-mix(in srgb, var(--danger) 60%, transparent)', animation: 'pulse 1.5s infinite' },
     recordButtonText: { marginTop: '20px', fontSize: '1.2rem', color: 'var(--text-secondary)' },
     recordFooter: { display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '15px', width: '100%', paddingBottom: '10px' },
     statusContainer: { minHeight: '24px', textAlign: 'center' },
     errorText: { color: 'var(--danger)' },
-    primaryButton: { backgroundColor: 'var(--accent-light-theme)', color: 'var(--accent-text-light-theme)', border: 'none', padding: '10px 20px', borderRadius: '8px', fontSize: '1rem', fontWeight: 'bold', cursor: 'pointer' },
+    primaryButton: { backgroundColor: 'var(--accent-secondary)', color: 'var(--accent-secondary-text)', border: 'none', padding: '10px 20px', borderRadius: '8px', fontSize: '1rem', fontWeight: 'bold', cursor: 'pointer' },
     secondaryButton: { background: 'var(--bg-3)', border: '1px solid var(--border-color-2)', color: 'var(--text-primary)', padding: '8px 16px', borderRadius: '8px', cursor: 'pointer' },
     themeToggleButton: { background: 'none', border: 'none', fontSize: '1.5rem', cursor: 'pointer', padding: '8px', color: 'var(--text-primary)' },
     headerSelect: { backgroundColor: 'var(--bg-3)', color: 'var(--text-primary)', border: '1px solid var(--border-color)', borderRadius: '6px', padding: '8px' },
     bottomNav: { display: 'flex', justifyContent: 'space-around', backgroundColor: 'var(--bg-2)', padding: '10px 0', borderTop: '1px solid var(--border-color)', position: 'fixed', bottom: 0, left: 0, right: 0, zIndex: 1000 },
     navButton: { background: 'none', border: 'none', color: 'var(--text-tertiary)', fontSize: '1rem', padding: '10px 20px', cursor: 'pointer', flex: 1 },
-    navButtonActive: { color: 'var(--accent-dark-theme)', fontWeight: 'bold' },
+    navButtonActive: { color: 'var(--accent-primary)', fontWeight: 'bold' },
     sessionsView: { padding: '20px' },
     sessionsHeader: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' },
     searchInput: { backgroundColor: 'var(--bg-3)', border: '1px solid var(--border-color)', color: 'var(--text-primary)', borderRadius: '8px', padding: '8px 12px' },
@@ -788,7 +823,7 @@ const styles: { [key: string]: CSSProperties } = {
     sessionItemDate: { fontSize: '0.9rem', color: 'var(--text-secondary)' },
     sessionItemStatus: { display: 'flex', alignItems: 'center', gap: '10px', color: 'var(--text-tertiary)' },
     processingChip: { backgroundColor: 'var(--bg-3)', color: 'var(--text-secondary)', padding: '4px 8px', borderRadius: '12px', fontSize: '0.8rem' },
-    errorChip: { backgroundColor: 'var(--danger-bg)', color: 'var(--danger)', padding: '4px 8px', borderRadius: '12px', fontSize: '0.8rem' },
+    errorChip: { backgroundColor: 'var(--danger-bg)', color: 'var(--danger-text)', padding: '4px 8px', borderRadius: '12px', fontSize: '0.8rem' },
     welcomeContainer: { textAlign: 'center', padding: '50px 20px', color: 'var(--text-tertiary)' },
     loginView: { flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', padding: '20px', textAlign: 'center' },
     toggleSwitchLabel: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', cursor: 'pointer', fontSize: '1rem', width: '100%', maxWidth: '300px', padding: '12px', backgroundColor: 'var(--bg-2)', borderRadius: '8px', border: '1px solid var(--border-color)' },
@@ -802,13 +837,13 @@ const styles: { [key: string]: CSSProperties } = {
     deviceItem: { padding: '12px', border: '1px solid var(--border-color)', borderRadius: '8px', marginBottom: '10px', cursor: 'pointer', textAlign: 'center', backgroundColor: 'var(--bg-3)', transition: 'background-color 0.2s' },
     detailView: { padding: '20px' },
     detailHeader: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' },
-    backButton: { background: 'none', border: 'none', color: 'var(--accent-dark-theme)', fontSize: '1rem', cursor: 'pointer' },
+    backButton: { background: 'none', border: 'none', color: 'var(--accent-primary)', fontSize: '1rem', cursor: 'pointer' },
     deleteButton: { background: 'none', border: '1px solid var(--danger-border)', color: 'var(--danger)', padding: '6px 12px', borderRadius: '6px', cursor: 'pointer' },
     detailMeta: { color: 'var(--text-secondary)', fontSize: '0.9rem', margin: '4px 0' },
     contentBlock: { whiteSpace: 'pre-wrap', lineHeight: 1.6 },
     actionItemsList: { listStyle: 'none', padding: 0 },
     actionItem: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '10px 0', borderBottom: '1px solid var(--border-color)' },
-    takeActionButton: { background: 'var(--accent-dark-theme)', color: 'var(--accent-text-dark-theme)', border: 'none', borderRadius: '6px', padding: '6px 10px', fontSize: '0.8rem', fontWeight: 'bold', cursor: 'pointer', marginLeft: '10px' },
+    takeActionButton: { background: 'var(--accent-primary)', color: 'var(--accent-primary-text)', border: 'none', borderRadius: '6px', padding: '6px 10px', fontSize: '0.8rem', fontWeight: 'bold', cursor: 'pointer', marginLeft: '10px' },
     speakersList: { listStyle: 'none', padding: 0 },
     speakerItem: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '5px 0' },
     editSpeakerButton: { background: 'none', border: 'none', cursor: 'pointer', fontSize: '1rem' },
@@ -817,12 +852,12 @@ const styles: { [key: string]: CSSProperties } = {
     accordionContainer: { marginBottom: '10px', borderRadius: '8px', overflow: 'hidden', border: '1px solid var(--border-color)' },
     accordionHeader: { backgroundColor: 'var(--bg-accent)', padding: '15px', cursor: 'pointer', border: 'none', width: '100%', textAlign: 'left', color: 'var(--text-primary)', fontSize: '1.1rem', fontWeight: 'bold', display: 'flex', justifyContent: 'space-between', alignItems: 'center' },
     accordionContent: { padding: '15px', backgroundColor: 'var(--bg-2)' },
-    actionButton: { display: 'inline-block', marginTop: '15px', padding: '10px 20px', backgroundColor: 'var(--accent-dark-theme)', color: 'var(--accent-text-dark-theme)', textDecoration: 'none', borderRadius: '8px', fontWeight: 'bold' },
+    actionButton: { display: 'inline-block', marginTop: '15px', padding: '10px 20px', backgroundColor: 'var(--accent-primary)', color: 'var(--accent-primary-text)', textDecoration: 'none', borderRadius: '8px', fontWeight: 'bold' },
     preformattedText: { whiteSpace: 'pre-wrap', backgroundColor: 'var(--bg-3)', padding: '10px', borderRadius: '6px', maxHeight: '150px', overflowY: 'auto' },
-    sourceItemText: { color: 'var(--text-secondary)', borderLeft: '3px solid var(--accent-dark-theme)', paddingLeft: '10px', marginBottom: '15px' },
+    sourceItemText: { color: 'var(--text-secondary)', borderLeft: '3px solid var(--accent-primary)', paddingLeft: '10px', marginBottom: '15px' },
 };
 const styleSheet = document.createElement("style");
-styleSheet.innerText = `@keyframes pulse { 0% { transform: scale(0.95); box-shadow: 0 0 0 0 color-mix(in srgb, var(--danger) 70%, transparent); } 70% { transform: scale(1); box-shadow: 0 0 0 20px color-mix(in srgb, var(--danger) 0%, transparent); } 100% { transform: scale(0.95); box-shadow: 0 0 0 0 color-mix(in srgb, var(--danger) 0%, transparent); } } .slider { position: absolute; cursor: pointer; inset: 0; background-color: var(--bg-3); transition: .4s; border-radius: 28px; } .slider:before { position: absolute; content: ""; height: 20px; width: 20px; left: 4px; bottom: 4px; background-color: white; transition: .4s; border-radius: 50%; } input { opacity: 0; width: 0; height: 0; } input:checked + .slider { background-color: var(--accent-dark-theme); } input:checked + .slider:before { transform: translateX(22px); }`;
+styleSheet.innerText = `@keyframes pulse { 0% { transform: scale(0.95); box-shadow: 0 0 0 0 color-mix(in srgb, var(--danger) 70%, transparent); } 70% { transform: scale(1); box-shadow: 0 0 0 20px color-mix(in srgb, var(--danger) 0%, transparent); } 100% { transform: scale(0.95); box-shadow: 0 0 0 0 color-mix(in srgb, var(--danger) 0%, transparent); } } .slider { position: absolute; cursor: pointer; inset: 0; background-color: var(--bg-3); transition: .4s; border-radius: 28px; } .slider:before { position: absolute; content: ""; height: 20px; width: 20px; left: 4px; bottom: 4px; background-color: white; transition: .4s; border-radius: 50%; } input { opacity: 0; width: 0; height: 0; } input:checked + .slider { background-color: var(--accent-primary); } input:checked + .slider:before { transform: translateX(22px); }`;
 document.head.appendChild(styleSheet);
 
 
