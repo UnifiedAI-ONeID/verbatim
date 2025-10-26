@@ -108,6 +108,8 @@ const translations = {
         signInToView: 'Sign in to view sessions',
         theme: 'Theme',
         language: 'Language',
+        signInError: 'Failed to sign in with Google. Please try again.',
+        signInPopupBlockedError: 'Sign-in popup was blocked by the browser. Please allow popups for this site.',
     },
     es: {
         title: 'Verbatim',
@@ -193,6 +195,8 @@ const translations = {
         signInToView: 'Inicia sesión para ver sesiones',
         theme: 'Tema',
         language: 'Idioma',
+        signInError: 'Error al iniciar sesión con Google. Por favor, inténtelo de nuevo.',
+        signInPopupBlockedError: 'El navegador bloqueó la ventana de inicio de sesión. Por favor, permita las ventanas emergentes para este sitio.',
     },
     'zh-CN': {
         title: 'Verbatim',
@@ -278,6 +282,8 @@ const translations = {
         signInToView: '登录以查看会话',
         theme: '主题',
         language: '语言',
+        signInError: 'Google 登录失败，请重试。',
+        signInPopupBlockedError: '登录弹出窗口被浏览器阻止。请允许此站点的弹出窗口。',
     },
      'zh-TW': {
         title: 'Verbatim',
@@ -363,6 +369,8 @@ const translations = {
         signInToView: '登入以查看會話',
         theme: '主題',
         language: '語言',
+        signInError: 'Google 登入失敗，請重試。',
+        signInPopupBlockedError: '登入彈出視窗被瀏覽器封鎖。請允許此網站的彈出視窗。',
     },
 };
 
@@ -466,6 +474,30 @@ const App = () => {
     const audioChunksRef = useRef<Blob[]>([]);
     const recordingIntervalRef = useRef<number | null>(null);
 
+    const signInWithGoogle = useCallback(async (): Promise<User | null> => {
+        setError(null);
+        const provider = new GoogleAuthProvider();
+        try {
+            const result = await signInWithPopup(auth, provider);
+            return result.user;
+        } catch (error: any) {
+            console.error("Authentication error:", error.code, error.message);
+            switch (error.code) {
+                case 'auth/popup-closed-by-user':
+                case 'auth/cancelled-popup-request':
+                    // Not an error to display to the user.
+                    break;
+                case 'auth/popup-blocked':
+                    setError(t.signInPopupBlockedError);
+                    break;
+                default:
+                    setError(t.signInError);
+                    break;
+            }
+            return null;
+        }
+    }, [t]);
+
     useEffect(() => {
         const unsub = onAuthStateChanged(auth, u => { setUser(u); setIsLoading(false); });
         return () => unsub();
@@ -553,7 +585,10 @@ const App = () => {
     
     const handleStartRecordingClick = async () => {
         setError(null);
-        if(!user) { await signInWithGoogle(); return; }
+        if(!user) {
+            const signedInUser = await signInWithGoogle();
+            if (!signedInUser) return;
+        }
         try {
             const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
             const devices = (await navigator.mediaDevices.enumerateDevices()).filter(d => d.kind === 'audioinput');
@@ -594,13 +629,13 @@ const App = () => {
     
     const renderContent = () => {
         if (selectedSession) return <SessionDetailView session={selectedSession} onBack={() => setSelectedSession(null)} onDelete={handleDeleteSession} onTakeAction={handleTakeAction} onUpdateSpeakerName={handleUpdateSpeakerName} editingSpeaker={editingSpeaker} setEditingSpeaker={setEditingSpeaker} />;
-        if (activeTab === 'sessions') return user ? <SessionsListView sessions={sessions} onSelectSession={setSelectedSession} searchQuery={searchQuery} setSearchQuery={setSearchQuery} /> : <LoginView prompt={t.signInToView} />;
+        if (activeTab === 'sessions') return user ? <SessionsListView sessions={sessions} onSelectSession={setSelectedSession} searchQuery={searchQuery} setSearchQuery={setSearchQuery} /> : <LoginView prompt={t.signInToView} onSignIn={signInWithGoogle} />;
         return <RecordView isRecording={isRecording} recordingTime={recordingTime} isSaving={isSaving} error={error} user={user} onStopRecording={handleStopRecording} onStartRecordingClick={handleStartRecordingClick} keepAwake={keepAwakeEnabled} setKeepAwake={setKeepAwakeEnabled} />;
     };
 
     return (
         <div style={styles.appContainer}>
-            <Header user={user} />
+            <Header user={user} onSignIn={signInWithGoogle} />
             <main style={styles.mainContent}>{renderContent()}</main>
             {!selectedSession && <BottomNav activeTab={activeTab} setActiveTab={(tab) => {setSelectedSession(null); setActiveTab(tab)}} />}
             {showDeviceSelector && <Modal title={t.selectAudioDeviceTitle} onClose={() => setShowDeviceSelector(false)}><p>{t.selectAudioDeviceInstruction}</p><ul style={styles.deviceList}>{availableDevices.map(d => <li key={d.deviceId} style={styles.deviceItem} onClick={() => handleStartRecording(d.deviceId)}>{d.label || `Mic ${availableDevices.indexOf(d) + 1}`}</li>)}</ul></Modal>}
@@ -610,7 +645,7 @@ const App = () => {
 };
 
 // --- Sub-Components ---
-const Header = ({ user }: { user: User | null }) => {
+const Header = ({ user, onSignIn }: { user: User | null; onSignIn: () => void; }) => {
     const { t, lang, setLang } = useLocalization();
     const { theme, toggleTheme } = useTheme();
     return (
@@ -619,21 +654,20 @@ const Header = ({ user }: { user: User | null }) => {
             <div style={styles.headerControls}>
                  <select value={lang} onChange={e => setLang(e.target.value as Language)} style={styles.headerSelect} aria-label={t.language}><option value="en">EN</option><option value="es">ES</option><option value="zh-CN">简体</option><option value="zh-TW">繁體</option></select>
                 <button onClick={toggleTheme} style={styles.themeToggleButton} aria-label={`${t.theme}: ${theme}`}>{theme === 'light' ? '🌙' : '☀️'}</button>
-                {user ? <button onClick={() => firebaseSignOut(auth)} style={styles.secondaryButton}>{t.signOut}</button> : <button onClick={signInWithGoogle} style={styles.primaryButton}>{t.signIn}</button>}
+                {user ? <button onClick={() => firebaseSignOut(auth)} style={styles.secondaryButton}>{t.signOut}</button> : <button onClick={onSignIn} style={styles.primaryButton}>{t.signIn}</button>}
             </div>
         </header>
     );
 };
-const signInWithGoogle = () => signInWithPopup(auth, new GoogleAuthProvider()).catch(err => console.error("Auth Error", err));
 
-const RecordView = ({ isRecording, recordingTime, isSaving, error, onStopRecording, onStartRecordingClick, keepAwake, setKeepAwake }: any) => {
+const RecordView = ({ isRecording, recordingTime, isSaving, error, user, onStopRecording, onStartRecordingClick, keepAwake, setKeepAwake }: any) => {
     const { t } = useLocalization();
     const formatTime = (s: number) => `${Math.floor(s / 60).toString().padStart(2, '0')}:${(s % 60).toString().padStart(2, '0')}`;
     return (
         <div style={styles.recordView}>
             <div style={styles.recordButtonContainer}>
                 <button style={{ ...styles.recordButton, ...(isRecording ? styles.recordButtonRecording : {}) }} onClick={isRecording ? onStopRecording : onStartRecordingClick} aria-label={isRecording ? t.stopRecording : t.startRecording}>{isRecording ? '⏹️' : '🎤'}</button>
-                <p style={styles.recordButtonText}>{isRecording ? formatTime(recordingTime) : t.tapToRecord}</p>
+                <p style={styles.recordButtonText}>{isRecording ? formatTime(recordingTime) : (user ? t.tapToRecord : t.signInToRecord)}</p>
                  <div style={styles.statusContainer}>{isSaving ? <p>{t.processing}</p> : error ? <p style={styles.errorText}>{error}</p> : null}</div>
             </div>
             <footer style={styles.recordFooter}>
@@ -684,9 +718,14 @@ const BottomNav = ({ activeTab, setActiveTab }: any) => {
     return <nav style={styles.bottomNav}><button style={{...styles.navButton, ...(activeTab === 'record' ? styles.navButtonActive : {})}} onClick={() => setActiveTab('record')}>{t.record}</button><button style={{...styles.navButton, ...(activeTab === 'sessions' ? styles.navButtonActive : {})}} onClick={() => setActiveTab('sessions')}>{t.sessions}</button></nav>;
 };
 
-const LoginView = ({ prompt }: any) => {
+const LoginView = ({ prompt, onSignIn }: { prompt: string; onSignIn: () => void; }) => {
     const { t } = useLocalization();
-    return <div style={styles.loginView}><Header user={null} /> <div style={{flex: 1, display:'flex', flexDirection:'column', justifyContent:'center', alignItems:'center'}}><p>{prompt}</p><button onClick={signInWithGoogle} style={styles.primaryButton}>{t.signIn}</button></div></div>;
+    return (
+        <div style={{ ...styles.loginView, justifyContent: 'center' }}>
+            <p>{prompt}</p>
+            <button onClick={onSignIn} style={styles.primaryButton}>{t.signIn}</button>
+        </div>
+    );
 };
 
 const Modal = ({ title, onClose, children }: ModalProps) => <div style={styles.modalOverlay} onClick={onClose}><div style={styles.modalContainer} onClick={e => e.stopPropagation()}><div style={styles.modalHeader}><h3>{title}</h3><button style={styles.modalCloseButton} onClick={onClose}>&times;</button></div><div style={styles.modalBody}>{children}</div></div></div>;

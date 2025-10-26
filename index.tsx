@@ -1,5 +1,4 @@
 
-
 import React, { useState, useRef, CSSProperties, useEffect, useCallback } from 'react';
 import { createRoot } from 'react-dom/client';
 import { GoogleGenAI, Type, FunctionDeclaration } from "@google/genai";
@@ -206,6 +205,8 @@ const translations = {
         signOut: 'Sign Out',
         signInToRecord: 'Sign in to start recording',
         signInToView: 'Sign in to view sessions',
+        signInError: 'Failed to sign in with Google. Please try again.',
+        signInPopupBlockedError: 'Sign-in popup was blocked by the browser. Please allow popups for this site.',
     },
     es: {
         title: 'Verbatim',
@@ -354,6 +355,8 @@ const translations = {
         signOut: 'Cerrar Sesión',
         signInToRecord: 'Inicia sesión para grabar',
         signInToView: 'Inicia sesión para ver sesiones',
+        signInError: 'Error al iniciar sesión con Google. Por favor, inténtelo de nuevo.',
+        signInPopupBlockedError: 'El navegador bloqueó la ventana de inicio de sesión. Por favor, permita las ventanas emergentes para este sitio.',
     },
     'zh-CN': {
         title: 'Verbatim',
@@ -502,6 +505,8 @@ const translations = {
         signOut: '登出',
         signInToRecord: '登录以开始录音',
         signInToView: '登录以查看会话',
+        signInError: 'Google 登录失败，请重试。',
+        signInPopupBlockedError: '登录弹出窗口被浏览器阻止。请允许此站点的弹出窗口。',
     },
      'zh-TW': {
         title: 'Verbatim',
@@ -650,6 +655,8 @@ const translations = {
         signOut: '登出',
         signInToRecord: '登入以開始錄製',
         signInToView: '登入以查看會話',
+        signInError: 'Google 登入失敗，請重試。',
+        signInPopupBlockedError: '登入彈出視窗被瀏覽器封鎖。請允許此網站的彈出視窗。',
     },
 };
 
@@ -844,13 +851,27 @@ const App = () => {
     };
 
     // --- Auth Functions ---
-    const signInWithGoogle = async () => {
+    const signInWithGoogle = async (): Promise<User | null> => {
         const provider = new GoogleAuthProvider();
         try {
-            await signInWithPopup(auth, provider);
-        } catch (error) {
-            console.error("Authentication error:", error);
-            setError("Failed to sign in with Google.");
+            setError(null);
+            const result = await signInWithPopup(auth, provider);
+            return result.user;
+        } catch (error: any) {
+            console.error("Authentication error:", error.code, error.message);
+            switch (error.code) {
+                case 'auth/popup-closed-by-user':
+                case 'auth/cancelled-popup-request':
+                    // Not an error to display to the user.
+                    break;
+                case 'auth/popup-blocked':
+                    setError(t.signInPopupBlockedError);
+                    break;
+                default:
+                    setError(t.signInError);
+                    break;
+            }
+            return null;
         }
     };
 
@@ -872,15 +893,9 @@ const App = () => {
         }
 
         if (!user) {
-            try {
-                await signInWithGoogle();
-                 if (auth.currentUser) {
-                     await startRecordingContinuation();
-                 }
-            } catch (error) {
-                console.error("Authentication error before recording:", error);
-                setError("Sign in is required to start a recording.");
-                return;
+            const signedInUser = await signInWithGoogle();
+            if (signedInUser) {
+                await startRecordingContinuation();
             }
         } else {
             await startRecordingContinuation();
