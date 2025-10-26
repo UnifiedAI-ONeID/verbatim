@@ -144,11 +144,13 @@ const App = () => {
     const [isLoading, setIsLoading] = useState(true);
     const [activeTab, setActiveTab] = useState<ActiveTab>('record');
     const [keepAwake, setKeepAwake] = useState(false);
+    const [showDeleteModal, setShowDeleteModal] = useState<string | null>(null);
 
     const mediaRecorderRef = useRef<MediaRecorder | null>(null);
     const audioChunksRef = useRef<Blob[]>([]);
     const recordingIntervalRef = useRef<number | null>(null);
     const wakeLockRef = useRef<any>(null);
+    const pipWindowRef = useRef<Window | null>(null);
     const pipChannelRef = useRef(new BroadcastChannel('verbatim_pip_channel'));
 
     useEffect(() => {
@@ -181,7 +183,7 @@ const App = () => {
         if (!user) return;
         setShowDeviceSelector(false);
         audioChunksRef.current = [];
-        const newSessionId = \`session_\${Date.now()}\`;
+        const newSessionId = "session_" + Date.now();
         const stream = await navigator.mediaDevices.getUserMedia({ audio: { deviceId: { exact: deviceId } } });
         mediaRecorderRef.current = new MediaRecorder(stream, { mimeType: 'audio/webm' });
         
@@ -192,11 +194,11 @@ const App = () => {
             if (recordingTime < 2) { setError(t.recordingTooShortError); setIsSaving(false); return; }
 
             try {
-                const storageRef = ref(storage, \`recordings/\${user.uid}/\${newSessionId}.webm\`);
+                const storageRef = ref(storage, "recordings/" + user.uid + "/" + newSessionId + ".webm");
                 await uploadBytes(storageRef, audioBlob);
                 const sessionDocRef = doc(db, 'users', user.uid, 'sessions', newSessionId);
                 await setDoc(sessionDocRef, {
-                    metadata: { title: \`Meeting - \${new Date().toLocaleString()}\`, date: new Date().toISOString() },
+                    metadata: { title: "Meeting - " + new Date().toLocaleString(), date: new Date().toISOString() },
                     status: 'processing'
                 });
                 setSelectedSession({ id: newSessionId, status: 'processing' } as Session);
@@ -224,23 +226,76 @@ const App = () => {
         setIsSaving(true);
         try {
             const prompt = t.actionPrompt.replace('{...}', actionItem); // Simplified
-            const result: HttpsCallableResult<ActionModalData> = await httpsCallable(functions, 'determineAction')({ prompt });
+            const result = await httpsCallable(functions, 'determineAction')({ prompt }) as HttpsCallableResult<ActionModalData>;
             setShowActionModal({ ...result.data, sourceItem: actionItem });
         } catch (e) { setError(t.actionError); }
         finally { setIsSaving(false); }
+    };
+
+    const handleKeepAwakeChange = async (isChecked: boolean) => {
+        setKeepAwake(isChecked);
+        if (isChecked) {
+            try {
+                wakeLockRef.current = await (navigator as any).wakeLock?.request('screen');
+            } catch (err) {
+                console.error('Failed to acquire wake lock:', err);
+            }
+        } else {
+            wakeLockRef.current?.release();
+            wakeLockRef.current = null;
+        }
+    };
+
+    const handleTogglePiP = () => {
+        if (pipWindowRef.current) {
+            pipWindowRef.current.close();
+            pipWindowRef.current = null;
+        } else {
+            pipWindowRef.current = window.open('/pip.html', 'Verbatim PiP', 'width=300,height=100,popup');
+        }
+    };
+
+    const handleToggleFaq = () => {
+        setShowFaq(!showFaq);
+    };
+
+    const handleSearchChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+        setSearchQuery(event.target.value);
+    };
+
+    const handleDeleteConfirmation = (sessionId: string) => {
+        setShowDeleteModal(sessionId);
+    };
+
+    const handleDeleteSession = async (sessionId: string) => {
+        if (user) {
+            await deleteDoc(doc(db, 'users', user.uid, 'sessions', sessionId));
+        }
+        setShowDeleteModal(null);
+    };
+
+    const handleRenameSpeaker = async (sessionId: string, speakerId: string, newName: string) => {
+        if (user && newName.trim()) {
+            const docRef = doc(db, 'users', user.uid, 'sessions', sessionId);
+            await updateDoc(docRef, { [`speakers.${speakerId}`]: newName.trim() });
+        }
+        setEditingSpeaker(null);
+    };
+
+    const handleExport = (session: Session) => {
+        const markdown = `# ${session.metadata.title}\n\n**Date:** ${new Date(session.metadata.date).toLocaleString()}\n\n## Summary\n\n${session.results.summary}\n\n## Action Items\n\n${session.results.actionItems.map((item: string) => `- ${item}`).join('\n')}\n\n## Transcript\n\n${session.results.transcript}`;
+        const blob = new Blob([markdown], { type: 'text/markdown' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `${session.metadata.title}.md`;
+        a.click();
+        URL.revokeObjectURL(url);
     };
     
     // --- Other handlers ---
     const signInWithGoogle = async () => { await signInWithPopup(auth, new GoogleAuthProvider()); };
     const handleSignOut = async () => { await signOut(auth); };
-    const handleDeleteSession = async (id: string) => { if (user) await deleteDoc(doc(db, 'users', user.uid, 'sessions', id)); };
-    const handleRenameSpeaker = async (sessionId, speakerId, newName) => {
-        if (user && newName.trim()) {
-            const docRef = doc(db, 'users', user.uid, 'sessions', sessionId);
-            await updateDoc(docRef, { [\`speakers.\${speakerId}\`]: newName.trim() });
-        }
-        setEditingSpeaker(null);
-    };
 
     if (isLoading) return <LoadingSpinner />;
     
@@ -250,33 +305,40 @@ const App = () => {
             <style>{globalStyles}</style>
             <main>
                 {selectedSession ? (
-                    <SessionDetail {...{ session: selectedSession, onBack: () => setSelectedSession(null), onTakeAction, onRenameSpeaker, editingSpeaker, setEditingSpeaker }} />
+                    <SessionDetail session={selectedSession} onBack={() => setSelectedSession(null)} onTakeAction={handleTakeAction} onRenameSpeaker={handleRenameSpeaker} editingSpeaker={editingSpeaker} setEditingSpeaker={setEditingSpeaker} onExport={handleExport} />
                 ) : (
                     activeTab === 'record' ?
-                        <RecordScreen {...{ user, isRecording, recordingTime, onStart: handleStartRecording, onStop: handleStopRecording, keepAwake, onKeepAwakeChange: setKeepAwake, onSignIn: signInWithGoogle }} /> :
-                        <SessionList {...{ sessions, onSelectSession: setSelectedSession, onDeleteSession: handleDeleteSession, user, onShowFaq: () => setShowFaq(true), onSignOut: handleSignOut, searchQuery, onSearchChange: e => setSearchQuery(e.target.value) }} />
+                        <RecordScreen {...{ user, isRecording, recordingTime, onStart: handleStartRecording, onStop: handleStopRecording, keepAwake, onKeepAwakeChange: handleKeepAwakeChange, onSignIn: signInWithGoogle, onTogglePiP: handleTogglePiP }} /> :
+                        <SessionList {...{ sessions, onSelectSession: setSelectedSession, onDeleteSession: handleDeleteConfirmation, user, onShowFaq: handleToggleFaq, onSignOut: handleSignOut, searchQuery, onSearchChange: handleSearchChange }} />
                 )}
             </main>
             {!selectedSession && !isRecording && <BottomNav {...{ activeTab, onTabChange: setActiveTab }} />}
             {isSaving && <LoadingModal text={t.processing} />}
             {error && <ErrorModal {...{ message: error, onClose: () => setError(null) }} />}
-            {showActionModal && <ActionModal {...{ data: showActionModal, onClose: () => setShowActionModal(null), user }} />}
+            {showActionModal && <ActionModal {...{ data: showActionModal, onClose: () => setShowActionModal(null) }} />}
             {showDeviceSelector && <AudioDeviceSelector {...{ devices: availableDevices, onDeviceSelected: handleDeviceSelected, onClose: () => setShowDeviceSelector(false) }} />}
-            {showFaq && <FaqModal {...{ onClose: () => setShowFaq(false) }} />}
+            {showFaq && <FaqModal {...{ onClose: handleToggleFaq }} />}
+            {showDeleteModal && (
+                <Modal onClose={() => setShowDeleteModal(null)} title={t.deleteSession}>
+                    <p>{t.deleteConfirmation}</p>
+                    <button onClick={() => handleDeleteSession(showDeleteModal)}>{t.deleteSession}</button>
+                    <button onClick={() => setShowDeleteModal(null)}>{t.cancel}</button>
+                </Modal>
+            )}
         </div>
     );
 };
 
 // --- Components (Styled & Final) ---
-const RecordScreen = ({ user, isRecording, recordingTime, onStart, onStop, keepAwake, onKeepAwakeChange, onSignIn }) => {
-    const formatTime = (s: number) => \`\${Math.floor(s/60).toString().padStart(2,'0')}:\${(s%60).toString().padStart(2,'0')}\`;
+const RecordScreen = ({ user, isRecording, recordingTime, onStart, onStop, keepAwake, onKeepAwakeChange, onSignIn, onTogglePiP }: any) => {
+    const formatTime = (s: number) => (Math.floor(s/60).toString().padStart(2,'0') + ":" + (s%60).toString().padStart(2,'0'));
     return (
         <div className="record-screen">
             {user ? (
-                <div className={`record-screen-content ${isRecording ? 'is-recording' : ''}`}>
+                <div className={"record-screen-content " + (isRecording ? 'is-recording' : '')}>
                     <p className="record-status-text">{isRecording ? t.recording : t.tapToRecord}</p>
                     <div className="timer-display">{formatTime(recordingTime)}</div>
-                    <button onClick={isRecording ? onStop : onStart} className={`mic-button ${isRecording ? 'stop' : 'start'}`} />
+                    <button onClick={isRecording ? onStop : onStart} className={"mic-button " + (isRecording ? 'stop' : 'start')} />
                     <div className="record-screen-options">
                         {!isRecording && (
                             <div className="keep-awake-container">
@@ -286,6 +348,7 @@ const RecordScreen = ({ user, isRecording, recordingTime, onStart, onStop, keepA
                                 </label>
                             </div>
                         )}
+                        {isRecording && <button onClick={onTogglePiP} className="pip-button">{t.toggleMiniView}</button>}
                     </div>
                 </div>
             ) : ( <button onClick={onSignIn} className="modal-button">{t.signIn}</button> )}
@@ -293,7 +356,7 @@ const RecordScreen = ({ user, isRecording, recordingTime, onStart, onStop, keepA
     );
 };
 
-const SessionList = ({ sessions, onSelectSession, onDeleteSession, user, onSignOut, searchQuery, onSearchChange, onShowFaq }) => (
+const SessionList = ({ sessions, onSelectSession, onDeleteSession, user, onSignOut, searchQuery, onSearchChange, onShowFaq }: any) => (
     <div className="page-container">
         <div className="page-header">
             <h1 className="page-title">{t.sessions}</h1>
@@ -304,7 +367,7 @@ const SessionList = ({ sessions, onSelectSession, onDeleteSession, user, onSignO
         </div>
         <input type="search" placeholder={t.searchPlaceholder} value={searchQuery} onChange={onSearchChange} className="search-input"/>
         <ul className="session-list">
-            {sessions.filter(s => s.metadata.title.toLowerCase().includes(searchQuery.toLowerCase())).map(s => (
+            {sessions.filter((s: any) => s.metadata.title.toLowerCase().includes(searchQuery.toLowerCase())).map((s: any) => (
                 <li key={s.id} className="session-item" onClick={() => onSelectSession(s)}>
                     <div className="session-item-content">
                         <h3>{s.metadata.title}</h3>
@@ -312,25 +375,28 @@ const SessionList = ({ sessions, onSelectSession, onDeleteSession, user, onSignO
                         {s.status === 'completed' && <p className="summary-preview">{(s.results.summary || '').slice(0, 100)}...</p>}
                         {s.status === 'processing' && <div className="processing-indicator"><div className="spinner-small"/> {t.processing}</div>}
                     </div>
-                    <button className="delete-btn" onClick={e => { e.stopPropagation(); onDeleteSession(s.id); }}>🗑️</button>
+                    <button className="delete-btn" onClick={(e: any) => { e.stopPropagation(); onDeleteSession(s.id); }}>🗑️</button>
                 </li>
             ))}
         </ul>
     </div>
 );
 
-const SessionDetail = ({ session, onBack, onTakeAction, onRenameSpeaker, editingSpeaker, setEditingSpeaker }) => {
-    const generateMarkdown = s => \`# \${s.metadata.title}\n\n\${s.results.summary}\`;
+const SessionDetail = ({ session, onBack, onTakeAction, onRenameSpeaker, editingSpeaker, setEditingSpeaker, onExport }: any) => {
+    const generateMarkdown = (s: any) => ("# " + s.metadata.title + "\n\n" + s.results.summary);
     return (
         <div className="page-container session-detail">
             <div className="page-header sticky">
                 <button onClick={onBack} className="back-btn">&larr; {t.backToList}</button>
-                <div className="export-buttons"><button onClick={() => navigator.clipboard.writeText(generateMarkdown(session))}>{t.copyMarkdown}</button></div>
+                <div className="export-buttons">
+                    <button onClick={() => navigator.clipboard.writeText(generateMarkdown(session))}>{t.copyMarkdown}</button>
+                    <button onClick={() => onExport(session)}>{t.downloadMarkdown}</button>
+                </div>
             </div>
             <h2>{session.metadata.title}</h2>
             <Accordion title={t.summaryHeader} defaultOpen={true}><p>{session.results.summary}</p></Accordion>
             <Accordion title={t.actionItemsHeader} defaultOpen={true}>
-                <ul>{session.results.actionItems.map((item, i) => <li key={i}><span>{item}</span><button className="action-btn" onClick={() => onTakeAction(item, session)}>{t.takeAction}</button></li>)}</ul>
+                <ul>{session.results.actionItems.map((item: any, i: any) => <li key={i}><span>{item}</span><button className="action-btn" onClick={() => onTakeAction(item, session)}>{t.takeAction}</button></li>)}</ul>
             </Accordion>
             <Accordion title={t.speakersHeader}>
                 {Object.entries(session.speakers).map(([id, name]) => (
@@ -346,7 +412,7 @@ const SessionDetail = ({ session, onBack, onTakeAction, onRenameSpeaker, editing
         </div>
     );
 };
-const Modal = ({ children, onClose, title }) => (
+const Modal = ({ children, onClose, title }: any) => (
     <div className="modal-overlay" onClick={onClose}>
         <div className="modal-content" onClick={e => e.stopPropagation()}>
             <div className="modal-header"><h2>{title}</h2><button onClick={onClose} className="close-btn">&times;</button></div>
@@ -354,26 +420,26 @@ const Modal = ({ children, onClose, title }) => (
         </div>
     </div>
 );
-const ActionModal = ({ data, onClose }) => <Modal onClose={onClose} title="Suggested Action"><pre>{JSON.stringify(data.args, null, 2)}</pre></Modal>;
-const AudioDeviceSelector = ({ devices, onDeviceSelected, onClose }) => (
+const ActionModal = ({ data, onClose }: any) => <Modal onClose={onClose} title="Suggested Action"><pre>{JSON.stringify(data.args, null, 2)}</pre></Modal>;
+const AudioDeviceSelector = ({ devices, onDeviceSelected, onClose }: any) => (
     <Modal onClose={onClose} title={t.selectAudioDeviceTitle}>
-        <select onChange={e => onDeviceSelected(e.target.value)} defaultValue=""><option disabled value="">Select Device</option>{devices.map(d => <option key={d.deviceId} value={d.deviceId}>{d.label}</option>)}</select>
+        <select onChange={e => onDeviceSelected(e.target.value)} defaultValue=""><option disabled value="">Select Device</option>{devices.map((d: any) => <option key={d.deviceId} value={d.deviceId}>{d.label}</option>)}</select>
     </Modal>
 );
-const FaqModal = ({ onClose }) => <Modal onClose={onClose} title={t.faqTitle}><p>{t.faq[0].a}</p></Modal>;
-const ErrorModal = ({ message, onClose }) => <Modal onClose={onClose} title="Error"><p>{message}</p></Modal>;
-const LoadingModal = ({ text }) => <div className="modal-overlay"><div className="loading-content"><div className="spinner"/>{text}</div></div>;
+const FaqModal = ({ onClose }: any) => <Modal onClose={onClose} title={t.faqTitle}><p>{t.faq[0].a}</p></Modal>;
+const ErrorModal = ({ message, onClose }: any) => <Modal onClose={onClose} title="Error"><p>{message}</p></Modal>;
+const LoadingModal = ({ text }: any) => <div className="modal-overlay"><div className="loading-content"><div className="spinner"/>{text}</div></div>;
 const LoadingSpinner = () => <div style={{display:'flex',justifyContent:'center',alignItems:'center',height:'100vh'}}><div className="spinner"/></div>;
-const BottomNav = ({ activeTab, onTabChange }) => (
+const BottomNav = ({ activeTab, onTabChange }: any) => (
     <nav className="bottom-nav">
         <button onClick={() => onTabChange('record')} className={activeTab === 'record' ? 'active' : ''}>🎙️ {t.record}</button>
         <button onClick={() => onTabChange('sessions')} className={activeTab === 'sessions' ? 'active' : ''}>📄 {t.sessions}</button>
     </nav>
 );
-const Accordion = ({ title, children, defaultOpen = false }) => {
+const Accordion = ({ title, children, defaultOpen = false }: any) => {
     const [isOpen, setIsOpen] = useState(defaultOpen);
     return (
-        <div className={`accordion-item ${isOpen ? 'open' : ''}`}>
+        <div className={"accordion-item " + (isOpen ? 'open' : '')}>
             <button className="accordion-header" onClick={() => setIsOpen(!isOpen)}>
                 <h3>{title}</h3><span className="accordion-icon">{isOpen ? '−' : '+'}</span>
             </button>
@@ -383,31 +449,30 @@ const Accordion = ({ title, children, defaultOpen = false }) => {
 };
 
 // --- Global Styles (Full) ---
-const globalStyles = \`
-    :root {
-      --primary-color: #00DAC6; --background-color: #121212; --surface-color: #1E1E1E;
-      --text-color: #E0E0E0; --text-muted-color: #A0A0A0; --font-family: 'Poppins', sans-serif;
-      --border-radius: 16px; --bottom-nav-height: 70px;
-    }
-    * { box-sizing: border-box; }
-    html, body { font-family: var(--font-family); background-color: var(--background-color); color: var(--text-color); margin: 0; }
-    main { padding: 1.5rem 1rem calc(var(--bottom-nav-height) + 1.5rem) 1rem; }
-    h1, h2, h3 { font-weight: 600; margin: 0; }
-    .page-container { width: 100%; max-width: 800px; margin: 0 auto; }
-    .page-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem; }
-    .page-title { color: var(--primary-color); font-size: 2rem; }
-    .record-screen { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; }
-    .timer-display { font-size: 4rem; font-weight: 700; }
-    .mic-button { width: 120px; height: 120px; border-radius: 50%; border: none; cursor: pointer; background: var(--primary-color); }
-    .mic-button.stop { background: #CF6679; }
-    .bottom-nav { position: fixed; bottom: 0; left: 0; right: 0; height: var(--bottom-nav-height); background: rgba(30,30,30,0.8); backdrop-filter: blur(15px); display: flex; justify-content: space-around; align-items: center; border-top: 1px solid rgba(255,255,255,0.1); }
-    .nav-button { background: none; border: none; color: var(--text-muted-color); cursor: pointer; }
-    .nav-button.active { color: var(--primary-color); }
-    .modal-overlay { position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.7); display: flex; align-items: center; justify-content: center; }
-    .modal-content { background: var(--surface-color); padding: 2rem; border-radius: var(--border-radius); max-width: 500px; width: 90%; }
-    .spinner { border: 4px solid rgba(255,255,255,0.2); border-radius: 50%; border-top: 4px solid var(--primary-color); width: 50px; height: 50px; animation: spin 1s linear infinite; }
-    @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
-    /* ... (add more comprehensive styles as needed) ... */
-\`;
+const globalStyles = " " +
+"    :root {" +
+"      --primary-color: #00DAC6; --background-color: #121212; --surface-color: #1E1E1E;" +
+"      --text-color: #E0E0E0; --text-muted-color: #A0A0A0; --font-family: 'Poppins', sans-serif;" +
+"      --border-radius: 16px; --bottom-nav-height: 70px;" +
+"    }" +
+"    * { box-sizing: border-box; }" +
+"    html, body { font-family: var(--font-family); background-color: var(--background-color); color: var(--text-color); margin: 0; }" +
+"    main { padding: 1.5rem 1rem calc(var(--bottom-nav-height) + 1.5rem) 1rem; }" +
+"    h1, h2, h3 { font-weight: 600; margin: 0; }" +
+"    .page-container { width: 100%; max-width: 800px; margin: 0 auto; }" +
+"    .page-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem; }" +
+"    .page-title { color: var(--primary-color); font-size: 2rem; }" +
+"    .record-screen { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; }" +
+"    .timer-display { font-size: 4rem; font-weight: 700; }" +
+"    .mic-button { width: 120px; height: 120px; border-radius: 50%; border: none; cursor: pointer; background: var(--primary-color); }" +
+"    .mic-button.stop { background: #CF6679; }" +
+"    .bottom-nav { position: fixed; bottom: 0; left: 0; right: 0; height: var(--bottom-nav-height); background: rgba(30,30,30,0.8); backdrop-filter: blur(15px); display: flex; justify-content: space-around; align-items: center; border-top: 1px solid rgba(255,255,255,0.1); }" +
+"    .nav-button { background: none; border: none; color: var(--text-muted-color); cursor: pointer; }" +
+"    .nav-button.active { color: var(--primary-color); }" +
+"    .modal-overlay { position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.7); display: flex; align-items: center; justify-content: center; }" +
+"    .modal-content { background: var(--surface-color); padding: 2rem; border-radius: var(--border-radius); max-width: 500px; width: 90%; }" +
+"    .spinner { border: 4px solid rgba(255,255,255,0.2); border-radius: 50%; border-top: 4px solid var(--primary-color); width: 50px; height: 50px; animation: spin 1s linear infinite; }" +
+"    @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }" +
+" ";
 
 createRoot(document.getElementById('root')!).render(<App />);

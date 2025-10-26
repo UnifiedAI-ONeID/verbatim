@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { createRoot } from 'react-dom/client';
 
 const PIP_STYLES: React.CSSProperties = {
@@ -17,12 +17,16 @@ const PIP_STYLES: React.CSSProperties = {
 
 const BUTTON_STYLES: React.CSSProperties = {
     backgroundColor: '#CF6679',
-    color: '#121212',
+    color: 'white',
     border: 'none',
-    borderRadius: '4px',
-    padding: '8px 12px',
+    borderRadius: '50%',
+    width: '48px',
+    height: '48px',
     cursor: 'pointer',
-    fontWeight: 'bold',
+    display: 'flex',
+    justifyContent: 'center',
+    alignItems: 'center',
+    fontSize: '24px',
 };
 
 const TIMER_STYLES: React.CSSProperties = {
@@ -55,7 +59,7 @@ const PiPWindow = () => {
     const formatTime = (seconds: number) => {
         const mins = Math.floor(seconds / 60).toString().padStart(2, '0');
         const secs = (seconds % 60).toString().padStart(2, '0');
-        return \`\${mins}:\${secs}\`;
+        return `${mins}:${secs}`;
     };
 
     const handleStop = () => {
@@ -67,7 +71,7 @@ const PiPWindow = () => {
         <div style={PIP_STYLES}>
             <span style={TIMER_STYLES}>{formatTime(time)}</span>
             <button style={BUTTON_STYLES} onClick={handleStop}>
-                Stop
+                ⏹️
             </button>
         </div>
     );

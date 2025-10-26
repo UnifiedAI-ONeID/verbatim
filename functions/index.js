@@ -73,8 +73,8 @@ exports.analyzeAudio = onCall({ timeoutSeconds: 540, secrets: ["GEMINI_API_KEY"]
 
   const firestore = getFirestore();
   const storage = getStorage();
-  const sessionDocRef = firestore.doc(\`users/\${userId}/sessions/\${sessionId}\`);
-  const filePath = \`recordings/\${userId}/\${sessionId}.webm\`;
+  const sessionDocRef = firestore.doc('users/' + userId + '/sessions/' + sessionId);
+  const filePath = 'recordings/' + userId + '/' + sessionId + '.webm';
 
   try {
     const file = storage.bucket().file(filePath);
