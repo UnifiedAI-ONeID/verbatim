@@ -4,33 +4,33 @@
   "description": "An AI-powered meeting assistant that records audio and uses Gemini to generate a full transcript with speaker labels, a key summary, and actionable next steps.",
   "icons": [
     {
-      "src": "https://assets-global.website-files.com/6526ada137350b5030229339/6526b15a4606549340b6167c_II-logo-white-cropped.png",
+      "src": "/icon.png",
       "type": "image/png",
       "sizes": "48x48"
     },
     {
-      "src": "https://assets-global.website-files.com/6526ada137350b5030229339/6526b15a4606549340b6167c_II-logo-white-cropped.png",
+      "src": "/icon.png",
       "type": "image/png",
       "sizes": "72x72"
     },
     {
-      "src": "https://assets-global.website-files.com/6526ada137350b5030229339/6526b15a4606549340b6167c_II-logo-white-cropped.png",
+      "src": "/icon.png",
       "type": "image/png",
       "sizes": "96x96"
     },
     {
-      "src": "https://assets-global.website-files.com/6526ada137350b5030229339/6526b15a4606549340b6167c_II-logo-white-cropped.png",
+      "src": "/icon.png",
       "type": "image/png",
       "sizes": "144x144"
     },
     {
-      "src": "https://assets-global.website-files.com/6526ada137350b5030229339/6526b15a4606549340b6167c_II-logo-white-cropped.png",
+      "src": "/icon.png",
       "type": "image/png",
       "sizes": "192x192",
       "purpose": "any maskable"
     },
     {
-      "src": "https://assets-global.website-files.com/6526ada137350b5030229339/6526b15a4606549340b6167c_II-logo-white-cropped.png",
+      "src": "/icon.png",
       "type": "image/png",
       "sizes": "512x512",
       "purpose": "any maskable"

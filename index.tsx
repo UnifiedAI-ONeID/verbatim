@@ -9,6 +9,18 @@ import { getAuth, GoogleAuthProvider, signInWithPopup, onAuthStateChanged, User,
 import { getFirestore, doc, setDoc, collection, query, orderBy, onSnapshot, deleteDoc, updateDoc } from "firebase/firestore";
 import { getStorage, ref, uploadBytes } from "firebase/storage";
 import { getFunctions, httpsCallable, HttpsCallableResult } from "firebase/functions";
+import { RecordScreen } from './src/components/RecordScreen';
+import { SessionList } from './src/components/SessionList';
+import { SessionDetail } from './src/components/SessionDetail';
+import { Modal } from './src/components/Modal';
+import { Accordion } from './src/components/Accordion';
+import { LoadingSpinner } from './src/components/LoadingSpinner';
+import { BottomNav } from './src/components/BottomNav';
+import { ActionModal } from './src/components/ActionModal';
+import { AudioDeviceSelector } from './src/components/AudioDeviceSelector';
+import { FaqModal } from './src/components/FaqModal';
+import { ErrorModal } from './src/components/ErrorModal';
+import { LoadingModal } from './src/components/LoadingModal';
 
 // --- Firebase Configuration ---
 const firebaseConfig = {
@@ -120,11 +132,11 @@ const translations = {
         signIn: 'Sign In with Google',
         signOut: 'Sign Out',
         signInToView: 'Sign in to view sessions',
+        install: 'Install App',
     },
 };
 
 const getLanguage = (): Language => (navigator.language.split('-')[0] as Language) || 'en';
-const t = translations[getLanguage()] || translations.en;
 
 // --- Main App Component ---
 const App = () => {
@@ -145,6 +157,12 @@ const App = () => {
     const [activeTab, setActiveTab] = useState<ActiveTab>('record');
     const [keepAwake, setKeepAwake] = useState(false);
     const [showDeleteModal, setShowDeleteModal] = useState<string | null>(null);
+    const [showCopied, setShowCopied] = useState(false);
+    const [showWelcome, setShowWelcome] = useState(false);
+    const [language, setLanguage] = useState<Language>(getLanguage());
+    const [installPrompt, setInstallPrompt] = useState<any>(null);
+
+    const t = translations[language] || translations.en;
 
     const mediaRecorderRef = useRef<MediaRecorder | null>(null);
     const audioChunksRef = useRef<Blob[]>([]);
@@ -154,9 +172,26 @@ const App = () => {
     const pipChannelRef = useRef(new BroadcastChannel('verbatim_pip_channel'));
 
     useEffect(() => {
+        const handleBeforeInstallPrompt = (e: any) => {
+            e.preventDefault();
+            setInstallPrompt(e);
+        };
+        window.addEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
+        return () => {
+            window.removeEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
+        };
+    }, []);
+
+    useEffect(() => {
         const unsubscribe = onAuthStateChanged(auth, u => {
             setUser(u);
-            if (!u) setSessions([]);
+            if (!u) {
+                setSessions([]);
+                setShowWelcome(false);
+            } else {
+                const isNewUser = u.metadata.creationTime === u.metadata.lastSignInTime;
+                setShowWelcome(isNewUser);
+            }
             setIsLoading(false);
         });
         return () => unsubscribe();
@@ -164,8 +199,12 @@ const App = () => {
 
     useEffect(() => {
         if (!user) return;
+        setIsLoading(true);
         const q = query(collection(db, 'users', user.uid, 'sessions'), orderBy('metadata.date', 'desc'));
-        const unsubscribe = onSnapshot(q, snap => setSessions(snap.docs.map(d => ({ ...d.data(), id: d.id } as Session))));
+        const unsubscribe = onSnapshot(q, snap => {
+            setSessions(snap.docs.map(d => ({ ...d.data(), id: d.id } as Session)));
+            setIsLoading(false);
+        });
         return () => unsubscribe();
     }, [user]);
 
@@ -292,6 +331,30 @@ const App = () => {
         a.click();
         URL.revokeObjectURL(url);
     };
+
+    const handleCopy = (text: string) => {
+        navigator.clipboard.writeText(text);
+        setShowCopied(true);
+        setTimeout(() => setShowCopied(false), 2000);
+    };
+
+    const handleLanguageChange = (event: React.ChangeEvent<HTMLSelectElement>) => {
+        setLanguage(event.target.value as Language);
+    };
+
+    const handleInstallClick = () => {
+        if (installPrompt) {
+            installPrompt.prompt();
+            installPrompt.userChoice.then((choiceResult: any) => {
+                if (choiceResult.outcome === 'accepted') {
+                    console.log('User accepted the install prompt');
+                } else {
+                    console.log('User dismissed the install prompt');
+                }
+                setInstallPrompt(null);
+            });
+        }
+    };
     
     // --- Other handlers ---
     const signInWithGoogle = async () => { await signInWithPopup(auth, new GoogleAuthProvider()); };
@@ -305,19 +368,19 @@ const App = () => {
             <style>{globalStyles}</style>
             <main>
                 {selectedSession ? (
-                    <SessionDetail session={selectedSession} onBack={() => setSelectedSession(null)} onTakeAction={handleTakeAction} onRenameSpeaker={handleRenameSpeaker} editingSpeaker={editingSpeaker} setEditingSpeaker={setEditingSpeaker} onExport={handleExport} />
+                    <SessionDetail session={selectedSession} onBack={() => setSelectedSession(null)} onTakeAction={handleTakeAction} onRenameSpeaker={handleRenameSpeaker} editingSpeaker={editingSpeaker} setEditingSpeaker={setEditingSpeaker} onExport={handleExport} onCopy={handleCopy} t={t} />
                 ) : (
                     activeTab === 'record' ?
-                        <RecordScreen {...{ user, isRecording, recordingTime, onStart: handleStartRecording, onStop: handleStopRecording, keepAwake, onKeepAwakeChange: handleKeepAwakeChange, onSignIn: signInWithGoogle, onTogglePiP: handleTogglePiP }} /> :
-                        <SessionList {...{ sessions, onSelectSession: setSelectedSession, onDeleteSession: handleDeleteConfirmation, user, onShowFaq: handleToggleFaq, onSignOut: handleSignOut, searchQuery, onSearchChange: handleSearchChange }} />
+                        <RecordScreen {...{ user, isRecording, recordingTime, onStart: handleStartRecording, onStop: handleStopRecording, keepAwake, onKeepAwakeChange: handleKeepAwakeChange, onSignIn: signInWithGoogle, onTogglePiP: handleTogglePiP, t, onInstall: handleInstallClick, showInstallButton: !!installPrompt }} /> :
+                        <SessionList {...{ sessions, onSelectSession: setSelectedSession, onDeleteSession: handleDeleteConfirmation, user, onShowFaq: handleToggleFaq, onSignOut: handleSignOut, searchQuery, onSearchChange: handleSearchChange, isLoading, t, language, onLanguageChange: handleLanguageChange }} />
                 )}
             </main>
-            {!selectedSession && !isRecording && <BottomNav {...{ activeTab, onTabChange: setActiveTab }} />}
+            {!selectedSession && !isRecording && <BottomNav {...{ activeTab, onTabChange: setActiveTab, t }} />}
             {isSaving && <LoadingModal text={t.processing} />}
-            {error && <ErrorModal {...{ message: error, onClose: () => setError(null) }} />}
-            {showActionModal && <ActionModal {...{ data: showActionModal, onClose: () => setShowActionModal(null) }} />}
-            {showDeviceSelector && <AudioDeviceSelector {...{ devices: availableDevices, onDeviceSelected: handleDeviceSelected, onClose: () => setShowDeviceSelector(false) }} />}
-            {showFaq && <FaqModal {...{ onClose: handleToggleFaq }} />}
+            {error && <ErrorModal {...{ message: error, onClose: () => setError(null), t }} />}
+            {showActionModal && <ActionModal {...{ data: showActionModal, onClose: () => setShowActionModal(null), t }} />}
+            {showDeviceSelector && <AudioDeviceSelector {...{ devices: availableDevices, onDeviceSelected: handleDeviceSelected, onClose: () => setShowDeviceSelector(false), t }} />}
+            {showFaq && <FaqModal {...{ onClose: handleToggleFaq, t }} />}
             {showDeleteModal && (
                 <Modal onClose={() => setShowDeleteModal(null)} title={t.deleteSession}>
                     <p>{t.deleteConfirmation}</p>
@@ -325,125 +388,12 @@ const App = () => {
                     <button onClick={() => setShowDeleteModal(null)}>{t.cancel}</button>
                 </Modal>
             )}
-        </div>
-    );
-};
-
-// --- Components (Styled & Final) ---
-const RecordScreen = ({ user, isRecording, recordingTime, onStart, onStop, keepAwake, onKeepAwakeChange, onSignIn, onTogglePiP }: any) => {
-    const formatTime = (s: number) => (Math.floor(s/60).toString().padStart(2,'0') + ":" + (s%60).toString().padStart(2,'0'));
-    return (
-        <div className="record-screen">
-            {user ? (
-                <div className={"record-screen-content " + (isRecording ? 'is-recording' : '')}>
-                    <p className="record-status-text">{isRecording ? t.recording : t.tapToRecord}</p>
-                    <div className="timer-display">{formatTime(recordingTime)}</div>
-                    <button onClick={isRecording ? onStop : onStart} className={"mic-button " + (isRecording ? 'stop' : 'start')} />
-                    <div className="record-screen-options">
-                        {!isRecording && (
-                            <div className="keep-awake-container">
-                                <label className="keep-awake-label-container">
-                                    <span className="keep-awake-label">{t.keepAwake}</span>
-                                    <div className="switch"><input type="checkbox" checked={keepAwake} onChange={e => onKeepAwakeChange(e.target.checked)} /><span className="slider round"></span></div>
-                                </label>
-                            </div>
-                        )}
-                        {isRecording && <button onClick={onTogglePiP} className="pip-button">{t.toggleMiniView}</button>}
-                    </div>
-                </div>
-            ) : ( <button onClick={onSignIn} className="modal-button">{t.signIn}</button> )}
-        </div>
-    );
-};
-
-const SessionList = ({ sessions, onSelectSession, onDeleteSession, user, onSignOut, searchQuery, onSearchChange, onShowFaq }: any) => (
-    <div className="page-container">
-        <div className="page-header">
-            <h1 className="page-title">{t.sessions}</h1>
-            <div className="header-actions">
-                {user && <button onClick={onSignOut} className="signout-button">{t.signOut}</button>}
-                <button onClick={onShowFaq} className="faq-button">?</button>
-            </div>
-        </div>
-        <input type="search" placeholder={t.searchPlaceholder} value={searchQuery} onChange={onSearchChange} className="search-input"/>
-        <ul className="session-list">
-            {sessions.filter((s: any) => s.metadata.title.toLowerCase().includes(searchQuery.toLowerCase())).map((s: any) => (
-                <li key={s.id} className="session-item" onClick={() => onSelectSession(s)}>
-                    <div className="session-item-content">
-                        <h3>{s.metadata.title}</h3>
-                        <p>{new Date(s.metadata.date).toLocaleString()}</p>
-                        {s.status === 'completed' && <p className="summary-preview">{(s.results.summary || '').slice(0, 100)}...</p>}
-                        {s.status === 'processing' && <div className="processing-indicator"><div className="spinner-small"/> {t.processing}</div>}
-                    </div>
-                    <button className="delete-btn" onClick={(e: any) => { e.stopPropagation(); onDeleteSession(s.id); }}>🗑️</button>
-                </li>
-            ))}
-        </ul>
-    </div>
-);
-
-const SessionDetail = ({ session, onBack, onTakeAction, onRenameSpeaker, editingSpeaker, setEditingSpeaker, onExport }: any) => {
-    const generateMarkdown = (s: any) => ("# " + s.metadata.title + "\n\n" + s.results.summary);
-    return (
-        <div className="page-container session-detail">
-            <div className="page-header sticky">
-                <button onClick={onBack} className="back-btn">&larr; {t.backToList}</button>
-                <div className="export-buttons">
-                    <button onClick={() => navigator.clipboard.writeText(generateMarkdown(session))}>{t.copyMarkdown}</button>
-                    <button onClick={() => onExport(session)}>{t.downloadMarkdown}</button>
-                </div>
-            </div>
-            <h2>{session.metadata.title}</h2>
-            <Accordion title={t.summaryHeader} defaultOpen={true}><p>{session.results.summary}</p></Accordion>
-            <Accordion title={t.actionItemsHeader} defaultOpen={true}>
-                <ul>{session.results.actionItems.map((item: any, i: any) => <li key={i}><span>{item}</span><button className="action-btn" onClick={() => onTakeAction(item, session)}>{t.takeAction}</button></li>)}</ul>
-            </Accordion>
-            <Accordion title={t.speakersHeader}>
-                {Object.entries(session.speakers).map(([id, name]) => (
-                    <div key={id}>
-                        {editingSpeaker?.speakerId === id ?
-                            <input type="text" defaultValue={name as string} onBlur={e => onRenameSpeaker(session.id, id, e.target.value)} autoFocus /> :
-                            <span onClick={() => setEditingSpeaker({ sessionId: session.id, speakerId: id })}>{name as string} ✏️</span>
-                        }
-                    </div>
-                ))}
-            </Accordion>
-            <Accordion title={t.transcriptHeader}><div className="transcript-content" dangerouslySetInnerHTML={{ __html: marked.parse(session.results.transcript.replace(/\n/g, '<br/>')) as string }}/></Accordion>
-        </div>
-    );
-};
-const Modal = ({ children, onClose, title }: any) => (
-    <div className="modal-overlay" onClick={onClose}>
-        <div className="modal-content" onClick={e => e.stopPropagation()}>
-            <div className="modal-header"><h2>{title}</h2><button onClick={onClose} className="close-btn">&times;</button></div>
-            <div className="modal-body">{children}</div>
-        </div>
-    </div>
-);
-const ActionModal = ({ data, onClose }: any) => <Modal onClose={onClose} title="Suggested Action"><pre>{JSON.stringify(data.args, null, 2)}</pre></Modal>;
-const AudioDeviceSelector = ({ devices, onDeviceSelected, onClose }: any) => (
-    <Modal onClose={onClose} title={t.selectAudioDeviceTitle}>
-        <select onChange={e => onDeviceSelected(e.target.value)} defaultValue=""><option disabled value="">Select Device</option>{devices.map((d: any) => <option key={d.deviceId} value={d.deviceId}>{d.label}</option>)}</select>
-    </Modal>
-);
-const FaqModal = ({ onClose }: any) => <Modal onClose={onClose} title={t.faqTitle}><p>{t.faq[0].a}</p></Modal>;
-const ErrorModal = ({ message, onClose }: any) => <Modal onClose={onClose} title="Error"><p>{message}</p></Modal>;
-const LoadingModal = ({ text }: any) => <div className="modal-overlay"><div className="loading-content"><div className="spinner"/>{text}</div></div>;
-const LoadingSpinner = () => <div style={{display:'flex',justifyContent:'center',alignItems:'center',height:'100vh'}}><div className="spinner"/></div>;
-const BottomNav = ({ activeTab, onTabChange }: any) => (
-    <nav className="bottom-nav">
-        <button onClick={() => onTabChange('record')} className={activeTab === 'record' ? 'active' : ''}>🎙️ {t.record}</button>
-        <button onClick={() => onTabChange('sessions')} className={activeTab === 'sessions' ? 'active' : ''}>📄 {t.sessions}</button>
-    </nav>
-);
-const Accordion = ({ title, children, defaultOpen = false }: any) => {
-    const [isOpen, setIsOpen] = useState(defaultOpen);
-    return (
-        <div className={"accordion-item " + (isOpen ? 'open' : '')}>
-            <button className="accordion-header" onClick={() => setIsOpen(!isOpen)}>
-                <h3>{title}</h3><span className="accordion-icon">{isOpen ? '−' : '+'}</span>
-            </button>
-            {isOpen && <div className="accordion-content">{children}</div>}
+            {showCopied && <div className="copied-toast">{t.copiedSuccess}</div>}
+            {showWelcome && (
+                <Modal onClose={() => setShowWelcome(false)} title={t.welcomeMessage}>
+                    <p>{t.welcomeSubtext}</p>
+                </Modal>
+            )}
         </div>
     );
 };
