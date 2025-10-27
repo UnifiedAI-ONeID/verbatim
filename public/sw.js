@@ -1,6 +1,6 @@
 
 
-const CACHE_NAME = 'verbatim-v5';
+const CACHE_NAME = 'verbatim-v6';
 const urlsToCache = [
   '/',
   '/index.html',
@@ -8,6 +8,12 @@ const urlsToCache = [
   '/pip.js',
   '/pip.html',
   '/manifest.json',
+  '/screenshots/screenshot-1-record-dark.svg',
+  '/screenshots/screenshot-2-recording-dark.svg',
+  '/screenshots/screenshot-3-sessions-dark.svg',
+  '/screenshots/screenshot-4-detail-dark.svg',
+  '/screenshots/screenshot-5-record-light.svg',
+  '/screenshots/screenshot-6-detail-light.svg',
   'https://fonts.googleapis.com/css2?family=Poppins:wght@400;600;700&display=swap'
 ];
 
