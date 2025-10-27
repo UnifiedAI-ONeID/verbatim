@@ -1,6 +1,6 @@
 
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -10,7 +10,6 @@
   <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;600;700&display=swap" rel="stylesheet">
   <link rel="manifest" href="/manifest.json">
   <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg%20width%3D%22192%22%20height%3D%22192%22%20viewBox%3D%220%200%20192%20192%22%20fill%3D%22none%22%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%3E%3Crect%20width%3D%22192%22%20height%3D%22192%22%20rx%3D%2248%22%20fill%3D%22%23181818%22%2F%3E%3Cpath%20d%3D%22M48%2068L80%20124L112%2068%22%20stroke%3D%22%2300DAC6%22%20stroke-width%3D%2216%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%2F%3E%3Cpath%20d%3D%22M112%20124V68%22%20stroke%3D%22%2300DAC6%22%20stroke-width%3D%2216%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%2F%3E%3Cpath%20d%3D%22M144%2068L144%20124%22%20stroke%3D%22%23FFFFFF%22%20stroke-opacity%3D%220.6%22%20stroke-width%3D%2210%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%2F%3E%3Cpath%20d%3D%22M128%2080L128%20112%22%20stroke%3D%22%23FFFFFF%22%20stroke-opacity%3D%220.6%22%20stroke-width%3D%2210%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%2F%3E%3C%2Fsvg%3E">
-  <meta name="theme-color" content="#00A99D">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 
@@ -25,11 +24,95 @@
   <meta name="twitter:description" content="Record meetings and let AI handle the notes. Verbatim generates transcripts, summaries, and action items, so you can focus on the conversation.">
   <meta name="twitter:image" content="data:image/svg+xml,%3Csvg%20width%3D%22192%22%20height%3D%22192%22%20viewBox%3D%220%200%20192%20192%22%20fill%3D%22none%22%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%3E%3Crect%20width%3D%22192%22%20height%3D%22192%22%20rx%3D%2248%22%20fill%3D%22%23181818%22%2F%3E%3Cpath%20d%3D%22M48%2068L80%20124L112%2068%22%20stroke%3D%22%2300DAC6%22%20stroke-width%3D%2216%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%2F%3E%3Cpath%20d%3D%22M112%20124V68%22%20stroke%3D%22%2300DAC6%22%20stroke-width%3D%2216%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%2F%3E%3Cpath%20d%3D%22M144%2068L144%20124%22%20stroke%3D%22%23FFFFFF%22%20stroke-opacity%3D%220.6%22%20stroke-width%3D%2210%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%2F%3E%3Cpath%20d%3D%22M128%2080L128%20112%22%20stroke%3D%22%23FFFFFF%22%20stroke-opacity%3D%220.6%22%20stroke-width%3D%2210%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%2F%3E%3C%2Fsvg%3E">
 
+  <script>
+    (function() {
+      // Set theme before rendering to prevent flash of unstyled content.
+      const storedTheme = localStorage.getItem('verbatim_theme');
+      const theme = (storedTheme === 'light' || storedTheme === 'dark') 
+                    ? storedTheme 
+                    : (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
+      document.documentElement.setAttribute('data-theme', theme);
+      
+      const metaThemeColor = document.createElement('meta');
+      metaThemeColor.name = 'theme-color';
+      metaThemeColor.content = theme === 'dark' ? '#0D0D0D' : '#F5F5F7';
+      document.head.appendChild(metaThemeColor);
+    })();
+  </script>
+
   <style>
+    :root {
+      font-synthesis: none;
+      text-rendering: optimizeLegibility;
+      -webkit-font-smoothing: antialiased;
+      -moz-osx-font-smoothing: grayscale;
+      -webkit-text-size-adjust: 100%;
+      font-family: 'Poppins', sans-serif;
+    }
+    
+    html[data-theme='dark'] {
+       --bg: #0D0D0D;
+       --bg-2: #1a1a1a;
+       --bg-3: #2a2a2a;
+       --bg-accent: #1f1f1f;
+       --text-primary: #E0E0E0;
+       --text-secondary: #aaa;
+       --text-tertiary: #888;
+       --border-color: #333;
+       --border-color-2: #444;
+       --accent-primary: #00DAC6;
+       --accent-primary-text: #0D0D0D;
+       --accent-secondary: #007AFF;
+       --accent-secondary-text: #FFFFFF;
+       --danger: #FF4136;
+       --danger-text: #E0E0E0;
+       --danger-border: #900;
+       --danger-bg: #500;
+       --danger-bg-light: #442222;
+       color-scheme: dark;
+    }
+
+    html[data-theme='light'] {
+       --bg: #F5F5F7;
+       --bg-2: #FFFFFF;
+       --bg-3: #E8E8ED;
+       --bg-accent: #FFFFFF;
+       --text-primary: #1D1D1F;
+       --text-secondary: #555;
+       --text-tertiary: #666;
+       --border-color: #D2D2D7;
+       --border-color-2: #C7C7CC;
+       --accent-primary: #00DAC6;
+       --accent-primary-text: #0D0D0D;
+       --accent-secondary: #007AFF;
+       --accent-secondary-text: #FFFFFF;
+       --danger: #D70015;
+       --danger-text: #D70015;
+       --danger-border: #D70015;
+       --danger-bg: #FFE5E5;
+       --danger-bg-light: #FFE5E5;
+       color-scheme: light;
+    }
+    
     body {
       margin: 0;
+      min-height: 100dvh;
+      background-color: var(--bg);
+      color: var(--text-primary);
+      transition: background-color 0.3s ease, color 0.3s ease;
+    }
+
+    #root:empty::before {
+      content: "Loading...";
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      height: 100vh;
+      font-size: 1.5rem;
+      color: var(--text-secondary);
     }
   </style>
+
 <script type="importmap">
 {
   "imports": {
@@ -49,6 +132,7 @@
 </script>
 </head>
 <body>
+  <noscript>You need to enable JavaScript to run this app.</noscript>
   <div id="root"></div>
   <script type="module" src="/index.tsx"></script>
 </body>
