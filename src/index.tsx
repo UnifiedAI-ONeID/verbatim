@@ -1,5 +1,4 @@
 
-
 import React, { useState, useRef, CSSProperties, useEffect, useCallback, createContext, useContext } from 'react';
 import { createRoot } from 'react-dom/client';
 import { GoogleGenAI, Type, FunctionDeclaration } from "@google/genai";
@@ -12,7 +11,7 @@ import { getFunctions, httpsCallable } from "firebase/functions";
 
 // --- Type Definitions ---
 type Language = 'en' | 'es' | 'zh-CN' | 'zh-TW';
-type Theme = 'light' | 'dark' | 'matrix';
+type Theme = 'light' | 'dark';
 type Platform = 'ios' | 'android' | 'macos' | 'windows' | 'unknown';
 type MeetingResults = { transcript: string; summary: string; actionItems: string[] };
 type MeetingMetadata = { title: string; date: string; location: string; mapUrl: string; };
@@ -106,7 +105,7 @@ const translations = {
         record: 'Record',
         recording: 'Recording...',
         tapToRecord: 'Tap to start recording',
-        signIn: 'Sign In with Google',
+        signIn: 'Sign In',
         signOut: 'Sign Out',
         signInToRecord: 'Sign in to start recording',
         signInToView: 'Sign in to view sessions',
@@ -196,7 +195,7 @@ const translations = {
         record: 'Grabar',
         recording: 'Grabando...',
         tapToRecord: 'Toca para empezar a grabar',
-        signIn: 'Iniciar Sesión con Google',
+        signIn: 'Iniciar Sesión',
         signOut: 'Cerrar Sesión',
         signInToRecord: 'Inicia sesión para grabar',
         signInToView: 'Inicia sesión para ver sesiones',
@@ -286,7 +285,7 @@ const translations = {
         record: '录音',
         recording: '录音中...',
         tapToRecord: '点击开始录音',
-        signIn: '使用 Google 登录',
+        signIn: '登录',
         signOut: '登出',
         signInToRecord: '登录以开始录音',
         signInToView: '登录以查看会话',
@@ -376,7 +375,7 @@ const translations = {
         record: '錄製',
         recording: '錄製中...',
         tapToRecord: '點擊以開始錄製',
-        signIn: '使用 Google 登入',
+        signIn: '登入',
         signOut: '登出',
         signInToRecord: '登入以開始錄製',
         signInToView: '登入以查看會話',
@@ -419,16 +418,13 @@ const LanguageContext = createContext<{ lang: Language; setLang: (lang: Language
 
 const ThemeProvider = ({ children }: { children?: React.ReactNode }) => {
     const [theme, setTheme] = useState<Theme>(() => {
-        const storedTheme = localStorage.getItem('verbatim_theme') as Theme;
-        if (storedTheme === 'matrix') return 'dark'; // Don't load easter egg on refresh
-        return storedTheme || 'dark';
+        const storedTheme = localStorage.getItem('verbatim_theme');
+        return (storedTheme === 'light' || storedTheme === 'dark') ? storedTheme : 'dark';
     });
     useEffect(() => {
         document.documentElement.setAttribute('data-theme', theme);
-        if (theme !== 'matrix') {
-            localStorage.setItem('verbatim_theme', theme);
-        }
-        const themeColor = theme === 'dark' ? '#0D0D0D' : theme === 'light' ? '#F5F5F7' : '#000000';
+        localStorage.setItem('verbatim_theme', theme);
+        const themeColor = theme === 'dark' ? '#0D0D0D' : '#F5F5F7';
         document.querySelector('meta[name="theme-color"]')?.setAttribute('content', themeColor);
     }, [theme]);
     const toggleTheme = () => setTheme(prev => prev === 'light' ? 'dark' : 'light');
@@ -489,38 +485,18 @@ const App = () => {
     const [keepAwakeEnabled, setKeepAwakeEnabled] = useState(() => JSON.parse(localStorage.getItem('verbatim_keepAwake') || 'false'));
     const [showDedication, setShowDedication] = useState(false);
     const { t } = useLocalization();
-    const { setTheme } = useTheme();
     const { requestWakeLock, releaseWakeLock } = useKeepAwake();
     
     const mediaRecorderRef = useRef<MediaRecorder | null>(null);
     const audioChunksRef = useRef<Blob[]>([]);
     const recordingIntervalRef = useRef<number | null>(null);
-    const konamiIndexRef = useRef(0);
     const logoClickCount = useRef(0);
-
-    // Easter Egg: Konami Code
-    useEffect(() => {
-        const konamiCode = ['arrowup', 'arrowup', 'arrowdown', 'arrowdown', 'arrowleft', 'arrowright', 'arrowleft', 'arrowright', 'b', 'a'];
-        const handleKeyDown = (e: KeyboardEvent) => {
-            if (e.key.toLowerCase() === konamiCode[konamiIndexRef.current]) {
-                konamiIndexRef.current++;
-                if (konamiIndexRef.current === konamiCode.length) {
-                    setTheme('matrix');
-                    konamiIndexRef.current = 0;
-                }
-            } else {
-                konamiIndexRef.current = 0;
-            }
-        };
-        window.addEventListener('keydown', handleKeyDown);
-        return () => window.removeEventListener('keydown', handleKeyDown);
-    }, [setTheme]);
 
     const handleLogoClick = () => {
         logoClickCount.current += 1;
         if (logoClickCount.current >= 5) {
             setShowDedication(true);
-            logoClickCount.current = 0; // Reset
+            setTimeout(() => (logoClickCount.current = 0), 2000); // Reset after a delay
         }
     };
 
@@ -793,23 +769,17 @@ const ActionModal = ({ data, user, onClose }: { data: ActionModalData, user: Use
         switch (type) {
             case 'create_calendar_event': {
                 const { title, description, date, time } = args;
-
-                // Helper to format date for Google Calendar (YYYYMMDDTHHMMSS)
                 const toGoogleFormat = (d: Date) => d.toISOString().replace(/[-:.]/g, '').slice(0, 15);
-                // Helper to format date for Outlook Calendar (YYYY-MM-DDTHH:MM:SS)
                 const toOutlookFormat = (d: Date) => d.toISOString().slice(0, 19);
-
                 const startDate = new Date(`${date}T${time}:00`);
-                const endDate = new Date(startDate.getTime() + 60 * 60 * 1000); // Assume 1 hour duration
+                const endDate = new Date(startDate.getTime() + 60 * 60 * 1000); // Assume 1 hour
 
-                // Google Calendar URL
                 const googleUrl = new URL('https://calendar.google.com/calendar/render');
                 googleUrl.searchParams.set('action', 'TEMPLATE');
                 googleUrl.searchParams.set('text', title);
                 googleUrl.searchParams.set('details', description);
                 googleUrl.searchParams.set('dates', `${toGoogleFormat(startDate)}/${toGoogleFormat(endDate)}`);
 
-                // Outlook Calendar URL
                 const outlookUrl = new URL('https://outlook.live.com/calendar/0/deeplink/compose');
                 outlookUrl.searchParams.set('path', '/calendar/action/compose');
                 outlookUrl.searchParams.set('rru', 'addevent');
