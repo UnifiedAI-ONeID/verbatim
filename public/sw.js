@@ -1,6 +1,6 @@
 
 
-const CACHE_NAME = 'verbatim-v9';
+const CACHE_NAME = 'verbatim-v13';
 const urlsToCache = [
   '/',
   '/index.html',
@@ -8,19 +8,27 @@ const urlsToCache = [
   '/pip.js',
   '/pip.html',
   '/manifest.json',
-  '/icon.svg',
+  '/icons/icon-16x16.png',
   '/icons/icon-32x32.png',
+  '/icons/icon-48x48.png',
+  '/icons/icon-72x72.png',
+  '/icons/icon-96x96.png',
+  '/icons/icon-128x128.png',
+  '/icons/icon-144x144.png',
+  '/icons/icon-152x152.png',
   '/icons/icon-192x192.png',
+  '/icons/icon-384x384.png',
   '/icons/icon-512x512.png',
+  '/icons/icon-1536x1536.jpg',
   '/icons/icon-192x192-maskable.png',
   '/icons/icon-512x512-maskable.png',
   '/icons/apple-touch-icon.png',
-  '/screenshots/screenshot-1-record-dark.svg',
-  '/screenshots/screenshot-2-recording-dark.svg',
-  '/screenshots/screenshot-3-sessions-dark.svg',
-  '/screenshots/screenshot-4-detail-dark.svg',
-  '/screenshots/screenshot-5-record-light.svg',
-  '/screenshots/screenshot-6-detail-light.svg',
+  '/screenshots/screenshot-1-record-dark.png',
+  '/screenshots/screenshot-2-recording-dark.png',
+  '/screenshots/screenshot-3-sessions-dark.png',
+  '/screenshots/screenshot-4-detail-dark.png',
+  '/screenshots/screenshot-5-record-light.png',
+  '/screenshots/screenshot-6-detail-light.png',
   'https://fonts.googleapis.com/css2?family=Poppins:wght@400;600;700&display=swap'
 ];
 
