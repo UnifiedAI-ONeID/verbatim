@@ -16,12 +16,10 @@ const PipApp = () => {
 
     useEffect(() => {
         const handleMessage = (event: MessageEvent) => {
-            const { type, isRecording: newIsRecording, time: newTime, recordingTime } = event.data;
+            const { type, isRecording: newIsRecording, recordingTime } = event.data;
             if (type === 'state_update') {
                 if (newIsRecording !== undefined) setIsRecording(newIsRecording);
                 if (recordingTime !== undefined) setTime(recordingTime);
-            } else if (type === 'time_update') {
-                 if (newTime !== undefined) setTime(newTime);
             }
         };
 
@@ -53,6 +51,7 @@ const PipApp = () => {
             display: 'flex',
             alignItems: 'center',
             gap: '8px',
+            width: '12px',
         },
         recordingIndicator: {
             width: '12px',
@@ -60,6 +59,12 @@ const PipApp = () => {
             borderRadius: '50%',
             backgroundColor: '#dc3545',
             animation: 'pulse 2s infinite',
+        },
+        notRecordingIndicator: {
+            width: '12px',
+            height: '12px',
+            borderRadius: '50%',
+            backgroundColor: '#6c757d',
         },
         timer: {
             fontSize: '1.5rem',
@@ -77,16 +82,26 @@ const PipApp = () => {
             fontSize: '1rem',
             fontWeight: 600,
             cursor: 'pointer',
+            opacity: 1,
+            transition: 'opacity 0.2s',
+        },
+        stopButtonDisabled: {
+            opacity: 0.5,
+            cursor: 'not-allowed',
         }
     };
 
     return (
         <div style={styles.container}>
             <div style={styles.statusContainer}>
-                <div style={styles.recordingIndicator}></div>
+                {isRecording ? <div style={styles.recordingIndicator}></div> : <div style={styles.notRecordingIndicator}></div>}
             </div>
             <div style={styles.timer}>{formatTime(time)}</div>
-            <button style={styles.stopButton} onClick={handleStop}>
+            <button 
+                style={{...styles.stopButton, ...(!isRecording ? styles.stopButtonDisabled : {})}} 
+                onClick={handleStop} 
+                disabled={!isRecording}
+            >
                 Stop
             </button>
         </div>

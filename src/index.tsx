@@ -1,14 +1,14 @@
 
-
 import React, { useState, useRef, CSSProperties, useEffect, useCallback, createContext, useContext } from 'react';
 import { createRoot } from 'react-dom/client';
 import { GoogleGenAI, Type, FunctionDeclaration } from "@google/genai";
 import { marked } from 'marked';
-import { initializeApp } from "firebase/app";
-import { getAuth, onAuthStateChanged, GoogleAuthProvider, signInWithPopup, signOut as firebaseSignOut, User } from "firebase/auth";
-import { getFirestore, collection, doc, setDoc, query, orderBy, onSnapshot, updateDoc, deleteDoc } from "firebase/firestore";
-import { getStorage, ref, uploadBytes, deleteObject } from "firebase/storage";
-import { getFunctions, httpsCallable } from "firebase/functions";
+// FIX: Updated Firebase imports to use scoped packages to fix module resolution errors.
+import { initializeApp } from "@firebase/app";
+import { getAuth, onAuthStateChanged, GoogleAuthProvider, signInWithPopup, signOut as firebaseSignOut, User } from "@firebase/auth";
+import { getFirestore, collection, doc, setDoc, query, orderBy, onSnapshot, updateDoc, deleteDoc, enableIndexedDbPersistence } from "@firebase/firestore";
+import { getStorage, ref, uploadBytes, deleteObject } from "@firebase/storage";
+import { getFunctions, httpsCallable } from "@firebase/functions";
 
 // --- Type Definitions ---
 type Language = 'en' | 'es' | 'zh-CN' | 'zh-TW';
@@ -370,7 +370,7 @@ const translations = {
         selectAudioDeviceInstruction: '請選擇您要用於錄音的麥克風。',
         start: '開始',
         cancel: '取消',
-        analysisPrompt: '你是一位專業的多語言會議助理。使用者的首選語言是繁體中文。請分析接下來的會議音訊，其中可能包含多種口語語言。你的任務是處理這段多語言音訊，並僅以繁體中文產生所有輸出。請提供簡明的摘要、行動項列表，以及帶有發言人標籤（例如，發言人1，發言人2）的完整文字記錄。在摘要中，請特別注意並清晰地列出任何提及的財務數據、預算或成本。識別所有獨立發言人。所有輸出文字（摘要、行動項、文字記錄）必須翻譯成並以繁體中文書寫。將輸出格式化為 JSON 物件，鍵為："summary"、"actionItems"（字串陣列）、"transcript"（帶換行符和發言人標籤的字串），以及 "speakers"（已識別的發言人標籤陣列，如 ["發言人 1", "發言人 2"]）。不要包含 JSON 的 markdown 包裝。',
+        analysisPrompt: '你是一位專業的多語言會議助理。使用者的首選語言是繁體中文。請分析接下來的會議音訊，其中可能包含多種口語語言。你的任務是處理這段多語言音訊，並僅以繁體中文產生所有輸出。請提供簡明的摘要、行動項列表，以及帶有發言人標籤（例如，發言人1，發言人2）の完整文字記錄。在摘要中，請特別注意並清晰地列出任何提及的財務數據、預算或成本。識別所有獨立發言人。所有輸出文字（摘要、行動項、文字記錄）必須翻譯成並以繁體中文書寫。將輸出格式化為 JSON 物件，鍵為："summary"、"actionItems"（字串陣列）、"transcript"（帶換行符和發言人標籤的字串），以及 "speakers"（已識別的發言人標籤陣列，如 ["發言人 1", "發言人 2"]）。不要包含 JSON 的 markdown 包裝。',
         actionPrompt: '你是一個智慧助理。請根據會議的完整背景和具體的行動項，呼叫最合適的工具來幫助使用者完成它。使用者的語言是繁體中文。會議標題：「{meetingTitle}」。會議日期：「{meetingDate}」。會議摘要：「{meetingSummary}」。行動項：「{actionItemText}」。確保所有生成的內容（如郵件主旨或活動描述）都与會議背景相關。',
         sessions: '會話',
         record: '錄製',
@@ -400,6 +400,14 @@ const firebaseConfig = {
 const firebaseApp = initializeApp(firebaseConfig);
 const auth = getAuth(firebaseApp);
 const db = getFirestore(firebaseApp);
+enableIndexedDbPersistence(db)
+  .catch((err) => {
+    if (err.code == 'failed-precondition') {
+      console.warn("Firestore persistence failed: multiple tabs open.");
+    } else if (err.code == 'unimplemented') {
+      console.warn("Firestore persistence not supported in this browser.");
+    }
+  });
 const storage = getStorage(firebaseApp);
 const functions = getFunctions(firebaseApp);
 const ai = new GoogleGenAI({ apiKey: process.env.API_KEY as string });
@@ -492,6 +500,15 @@ const App = () => {
     const audioChunksRef = useRef<Blob[]>([]);
     const recordingIntervalRef = useRef<number | null>(null);
     const logoClickCount = useRef(0);
+    const pipWindowRef = useRef<Window | null>(null);
+    const channelRef = useRef<BroadcastChannel | null>(null);
+    const isRecordingRef = useRef(isRecording);
+    const recordingTimeRef = useRef(recordingTime);
+    
+    useEffect(() => {
+        isRecordingRef.current = isRecording;
+        recordingTimeRef.current = recordingTime;
+    }, [isRecording, recordingTime]);
 
     const handleLogoClick = () => {
         logoClickCount.current += 1;
@@ -524,6 +541,19 @@ const App = () => {
         }
     }, [t]);
 
+    // Register Service Worker for PWA
+    useEffect(() => {
+        if ('serviceWorker' in navigator) {
+            window.addEventListener('load', () => {
+                navigator.serviceWorker.register('/sw.js').then(registration => {
+                    console.log('SW registered: ', registration);
+                }).catch(registrationError => {
+                    console.log('SW registration failed: ', registrationError);
+                });
+            });
+        }
+    }, []);
+
     useEffect(() => {
         const unsub = onAuthStateChanged(auth, u => { setUser(u); setIsLoading(false); });
         return () => unsub();
@@ -537,6 +567,71 @@ const App = () => {
     }, [user]);
 
     useEffect(() => localStorage.setItem('verbatim_keepAwake', JSON.stringify(keepAwakeEnabled)), [keepAwakeEnabled]);
+
+    const handleStopRecording = useCallback(() => {
+        if (mediaRecorderRef.current?.state === "recording") {
+            mediaRecorderRef.current.stop();
+        }
+        setIsRecording(false);
+        if (recordingIntervalRef.current) {
+            clearInterval(recordingIntervalRef.current);
+            recordingIntervalRef.current = null;
+        }
+        releaseWakeLock();
+        if (pipWindowRef.current && !pipWindowRef.current.closed) {
+            pipWindowRef.current.close();
+            pipWindowRef.current = null;
+        }
+    }, [releaseWakeLock]);
+
+    const openPipWindow = useCallback(async () => {
+        if (pipWindowRef.current && !pipWindowRef.current.closed) {
+            pipWindowRef.current.focus();
+            return;
+        }
+        const pipWindow = window.open('/pip.html', 'verbatim_pip', 'width=400,height=120,popup');
+        pipWindowRef.current = pipWindow;
+    }, []);
+
+    // Effect for PiP BroadcastChannel listener
+    useEffect(() => {
+        const channel = new BroadcastChannel('verbatim_pip_channel');
+        channelRef.current = channel;
+
+        const messageHandler = (event: MessageEvent) => {
+            if (event.data.type === 'stop_recording') {
+                handleStopRecording();
+            } else if (event.data.type === 'pip_ready') {
+                if (channelRef.current) {
+                    channelRef.current.postMessage({
+                        type: 'state_update',
+                        isRecording: isRecordingRef.current,
+                        recordingTime: recordingTimeRef.current,
+                    });
+                }
+            }
+        };
+        channel.addEventListener('message', messageHandler);
+        return () => {
+            channel.removeEventListener('message', messageHandler);
+            channel.close();
+        };
+    }, [handleStopRecording]);
+    
+    // Effect for sending state updates to PiP window
+    useEffect(() => {
+        if (channelRef.current && pipWindowRef.current && !pipWindowRef.current.closed) {
+            channelRef.current.postMessage({
+                type: 'state_update',
+                isRecording,
+                recordingTime,
+            });
+        }
+        if (!isRecording && pipWindowRef.current && !pipWindowRef.current.closed) {
+            pipWindowRef.current.close();
+            pipWindowRef.current = null;
+        }
+    }, [isRecording, recordingTime]);
     
     const handleStartRecording = async (deviceId: string) => {
         if (!auth.currentUser) return;
@@ -604,14 +699,6 @@ const App = () => {
             await deleteDoc(sessionDocRef).catch(() => {});
         }
     };
-
-    const handleStopRecording = () => {
-        if (mediaRecorderRef.current?.state === "recording") mediaRecorderRef.current.stop();
-        setIsRecording(false);
-        if (recordingIntervalRef.current) clearInterval(recordingIntervalRef.current);
-        recordingIntervalRef.current = null;
-        releaseWakeLock();
-    };
     
     const handleStartRecordingClick = async () => {
         setError(null);
@@ -660,7 +747,7 @@ const App = () => {
     const renderContent = () => {
         if (selectedSession) return <SessionDetailView session={selectedSession} onBack={() => setSelectedSession(null)} onDelete={handleDeleteSession} onTakeAction={handleTakeAction} onUpdateSpeakerName={handleUpdateSpeakerName} editingSpeaker={editingSpeaker} setEditingSpeaker={setEditingSpeaker} />;
         if (activeTab === 'sessions') return user ? <SessionsListView sessions={sessions} onSelectSession={setSelectedSession} searchQuery={searchQuery} setSearchQuery={setSearchQuery} /> : <LoginView prompt={t.signInToView} onSignIn={signInWithGoogle} />;
-        return <RecordView isRecording={isRecording} recordingTime={recordingTime} isSaving={isSaving} error={error} user={user} onStopRecording={handleStopRecording} onStartRecordingClick={handleStartRecordingClick} keepAwake={keepAwakeEnabled} setKeepAwake={setKeepAwakeEnabled} />;
+        return <RecordView isRecording={isRecording} recordingTime={recordingTime} isSaving={isSaving} error={error} user={user} onStopRecording={handleStopRecording} onStartRecordingClick={handleStartRecordingClick} keepAwake={keepAwakeEnabled} setKeepAwake={setKeepAwakeEnabled} onTogglePip={openPipWindow} />;
     };
 
     return (
@@ -691,7 +778,7 @@ const Header = ({ user, onSignIn, onLogoClick }: { user: User | null; onSignIn: 
     );
 };
 
-const RecordView = ({ isRecording, recordingTime, isSaving, error, user, onStopRecording, onStartRecordingClick, keepAwake, setKeepAwake }: any) => {
+const RecordView = ({ isRecording, recordingTime, isSaving, error, user, onStopRecording, onStartRecordingClick, keepAwake, setKeepAwake, onTogglePip }: any) => {
     const { t } = useLocalization();
     const formatTime = (s: number) => `${Math.floor(s / 60).toString().padStart(2, '0')}:${(s % 60).toString().padStart(2, '0')}`;
     return (
@@ -703,6 +790,7 @@ const RecordView = ({ isRecording, recordingTime, isSaving, error, user, onStopR
             </div>
             <footer style={styles.recordFooter}>
                  <label style={styles.toggleSwitchLabel}><span>{t.keepAwake}</span><div style={styles.toggleSwitch}><input type="checkbox" checked={keepAwake} onChange={() => setKeepAwake(!keepAwake)} /><span className="slider"></span></div></label>
+                 {isRecording && <button onClick={onTogglePip} style={styles.secondaryButton}>{t.toggleMiniView}</button>}
             </footer>
         </div>
     );
@@ -721,6 +809,49 @@ const SessionsListView = ({ sessions, onSelectSession, searchQuery, setSearchQue
 
 const SessionDetailView = ({ session, onBack, onDelete, onTakeAction, onUpdateSpeakerName, editingSpeaker, setEditingSpeaker }: any) => {
     const { t } = useLocalization();
+    const [showExport, setShowExport] = useState(false);
+    const [copyStatus, setCopyStatus] = useState('');
+
+    const generateMarkdown = useCallback(() => {
+        const { metadata, results, speakers } = session;
+        if (!results) return '';
+        const speakerNames = Object.values(speakers || {});
+        const cleanTranscript = (results.transcript || '')
+            .replace(/<strong>(.*?)<\/strong>/g, '**$1**')
+            .replace(/<br\s*\/?>/g, '\n');
+
+        return `# ${metadata.title}\n\n` +
+            `**${t.dateLabel}** ${new Date(metadata.date).toLocaleString()}\n` +
+            `**${t.meetingLocation}** ${metadata.location}\n\n` +
+            `## ${t.summaryHeader}\n\n${results.summary || t.noSummary}\n\n` +
+            `## ${t.actionItemsHeader}\n\n${results.actionItems.length > 0 ? results.actionItems.map((item:string) => `- ${item}`).join('\n') : t.noActionItems}\n\n` +
+            `## ${t.speakersHeader}\n\n${speakerNames.length > 0 ? speakerNames.map(name => `- ${name}`).join('\n') : ''}\n\n` +
+            `## ${t.transcriptHeader}\n\n${cleanTranscript || t.noTranscript}`;
+    }, [session, t]);
+
+    const handleCopy = () => {
+        const markdown = generateMarkdown();
+        navigator.clipboard.writeText(markdown).then(() => {
+            setCopyStatus(t.copiedSuccess);
+            setTimeout(() => { setCopyStatus(''); setShowExport(false); }, 2000);
+        }).catch(() => setCopyStatus('Failed to copy'));
+    };
+
+    const handleDownload = () => {
+        const markdown = generateMarkdown();
+        const blob = new Blob([markdown], { type: 'text/markdown;charset=utf-8' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        const filename = session.metadata.title.replace(/[^a-z0-9]/gi, '_').toLowerCase();
+        a.download = `${filename || 'meeting_notes'}.md`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+        setShowExport(false);
+    };
+
     const renderTranscript = () => {
         if (!session.results?.transcript) return t.noTranscript;
         let displayTranscript = Object.entries(session.speakers || {}).reduce((acc, [id, name]) => acc.replace(new RegExp(`<strong>${id}:</strong>`, 'g'), `<strong>${name}:</strong>`), session.results.transcript);
@@ -728,7 +859,23 @@ const SessionDetailView = ({ session, onBack, onDelete, onTakeAction, onUpdateSp
     };
     return (
         <div style={styles.detailView}>
-            <div style={styles.detailHeader}><button onClick={onBack} style={styles.backButton}>&lt; {t.backToList}</button><button onClick={() => onDelete(session.id)} style={styles.deleteButton}>{t.deleteSession}</button></div>
+            <div style={styles.detailHeader}>
+                <button onClick={onBack} style={styles.backButton}>&lt; {t.backToList}</button>
+                {session.status === 'completed' && (
+                    <div style={styles.detailHeaderActions}>
+                        <div style={{ position: 'relative' }}>
+                            <button onClick={() => setShowExport(p => !p)} style={styles.secondaryButton}>{t.exportResults}</button>
+                            {showExport && (
+                                <div style={styles.exportMenu}>
+                                    <button style={styles.exportMenuItem} onClick={handleCopy}>{copyStatus || t.copyMarkdown}</button>
+                                    <button style={styles.exportMenuItem} onClick={handleDownload}>{t.downloadMarkdown}</button>
+                                </div>
+                            )}
+                        </div>
+                        <button onClick={() => onDelete(session.id)} style={styles.deleteButton}>{t.deleteSession}</button>
+                    </div>
+                )}
+            </div>
             <h2>{session.metadata.title}</h2>
             <p style={styles.detailMeta}>{new Date(session.metadata.date).toLocaleString()}</p>
             <p style={styles.detailMeta}>{t.meetingLocation} <a href={session.metadata.mapUrl} target="_blank" rel="noopener noreferrer">{session.metadata.location}</a></p>
@@ -896,7 +1043,10 @@ const styles: { [key: string]: CSSProperties } = {
     deviceList: { listStyle: 'none', padding: 0, margin: '10px 0 0' },
     deviceItem: { padding: '12px', border: '1px solid var(--border-color)', borderRadius: '8px', marginBottom: '10px', cursor: 'pointer', textAlign: 'center', backgroundColor: 'var(--bg-3)', transition: 'background-color 0.2s' },
     detailView: { padding: '20px' },
-    detailHeader: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' },
+    detailHeader: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px', flexWrap: 'wrap', gap: '10px' },
+    detailHeaderActions: { display: 'flex', alignItems: 'center', gap: '10px' },
+    exportMenu: { position: 'absolute', top: '100%', right: 0, backgroundColor: 'var(--bg-3)', borderRadius: '8px', border: '1px solid var(--border-color)', boxShadow: '0 4px 12px rgba(0,0,0,0.15)', zIndex: 10, marginTop: '5px', overflow: 'hidden', display: 'flex', flexDirection: 'column', width: 'max-content' },
+    exportMenuItem: { background: 'none', border: 'none', color: 'var(--text-primary)', padding: '10px 15px', textAlign: 'left', width: '100%', cursor: 'pointer', fontSize: '0.9rem' },
     backButton: { background: 'none', border: 'none', color: 'var(--accent-primary)', fontSize: '1rem', cursor: 'pointer' },
     deleteButton: { background: 'none', border: '1px solid var(--danger-border)', color: 'var(--danger)', padding: '6px 12px', borderRadius: '6px', cursor: 'pointer' },
     detailMeta: { color: 'var(--text-secondary)', fontSize: '0.9rem', margin: '4px 0' },

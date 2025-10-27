@@ -4,8 +4,8 @@ const CACHE_NAME = 'verbatim-v16';
 const urlsToCache = [
   '/',
   '/index.html',
-  '/index.js',
-  '/pip.js',
+  '/index.tsx',
+  '/pip.tsx',
   '/pip.html',
   '/manifest.json',
   '/favicon.ico',
