@@ -1,5 +1,5 @@
 
-const CACHE_NAME = 'verbatim-v7';
+const CACHE_NAME = 'verbatim-v9';
 const urlsToCache = [
   '/',
   '/index.html',
@@ -7,6 +7,13 @@ const urlsToCache = [
   '/pip.tsx',
   '/pip.html',
   '/manifest.json',
+  '/icon.svg',
+  '/icons/icon-32x32.png',
+  '/icons/icon-192x192.png',
+  '/icons/icon-512x512.png',
+  '/icons/icon-192x192-maskable.png',
+  '/icons/icon-512x512-maskable.png',
+  '/icons/apple-touch-icon.png',
   '/screenshots/screenshot-1-record-dark.svg',
   '/screenshots/screenshot-2-recording-dark.svg',
   '/screenshots/screenshot-3-sessions-dark.svg',

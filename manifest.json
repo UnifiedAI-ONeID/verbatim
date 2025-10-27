@@ -1,32 +1,81 @@
-
 {
   "short_name": "Verbatim",
   "name": "Verbatim: AI Meeting Assistant",
   "description": "An AI-powered meeting assistant that records audio and uses Gemini to generate a full transcript with speaker labels, a key summary, and actionable next steps.",
   "icons": [
     {
-      "src": "data:image/svg+xml,%3Csvg%20width%3D%22192%22%20height%3D%22192%22%20viewBox%3D%220%200%20192%20192%22%20fill%3D%22none%22%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%3E%3Crect%20width%3D%22192%22%20height%3D%22192%22%20rx%3D%2248%22%20fill%3D%22%23181818%22%2F%3E%3Cpath%20d%3D%22M48%2068L80%20124L112%2068%22%20stroke%3D%22%2300DAC6%22%20stroke-width%3D%2216%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%2F%3E%3Cpath%20d%3D%22M112%20124V68%22%20stroke%3D%22%2300DAC6%22%20stroke-width%3D%2216%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%2F%3E%3Cpath%20d%3D%22M144%2068L144%20124%22%20stroke%3D%22%23FFFFFF%22%20stroke-opacity%3D%220.6%22%20stroke-width%3D%2210%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%2F%3E%3Cpath%20d%3D%22M128%2080L128%20112%22%20stroke%3D%22%23FFFFFF%22%20stroke-opacity%3D%220.6%22%20stroke-width%3D%2210%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%2F%3E%3C%2Fsvg%3E",
-      "sizes": "192x192",
-      "type": "image/svg+xml",
+      "src": "/icons/icon-32x32.png",
+      "sizes": "32x32",
+      "type": "image/png",
       "purpose": "any"
     },
     {
-      "src": "data:image/svg+xml,%3Csvg%20width%3D%22192%22%20height%3D%22192%22%20viewBox%3D%220%200%20192%20192%22%20fill%3D%22none%22%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%3E%3Crect%20width%3D%22192%22%20height%3D%22192%22%20rx%3D%2248%22%20fill%3D%22%23181818%22%2F%3E%3Cpath%20d%3D%22M48%2068L80%20124L112%2068%22%20stroke%3D%22%2300DAC6%22%20stroke-width%3D%2216%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%2F%3E%3Cpath%20d%3D%22M112%20124V68%22%20stroke%3D%22%2300DAC6%22%20stroke-width%3D%2216%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%2F%3E%3Cpath%20d%3D%22M144%2068L144%20124%22%20stroke%3D%22%23FFFFFF%22%20stroke-opacity%3D%220.6%22%20stroke-width%3D%2210%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%2F%3E%3Cpath%20d%3D%22M128%2080L128%20112%22%20stroke%3D%22%23FFFFFF%22%20stroke-opacity%3D%220.6%22%20stroke-width%3D%2210%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%2F%3E%3C%2Fsvg%3E",
-      "sizes": "512x512",
-      "type": "image/svg+xml",
+      "src": "/icons/icon-192x192.png",
+      "sizes": "192x192",
+      "type": "image/png",
       "purpose": "any"
     },
     {
-      "src": "data:image/svg+xml,%3Csvg%20width%3D%22192%22%20height%3D%22192%22%20viewBox%3D%220%200%20192%20192%22%20fill%3D%22none%22%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%3E%3Crect%20width%3D%22192%22%20height%3D%22192%22%20rx%3D%2248%22%20fill%3D%22%23181818%22%2F%3E%3Cpath%20d%3D%22M48%2068L80%20124L112%2068%22%20stroke%3D%22%2300DAC6%22%20stroke-width%3D%2216%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%2F%3E%3Cpath%20d%3D%22M112%20124V68%22%20stroke%3D%22%2300DAC6%22%20stroke-width%3D%2216%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%2F%3E%3Cpath%20d%3D%22M144%2068L144%20124%22%20stroke%3D%22%23FFFFFF%22%20stroke-opacity%3D%220.6%22%20stroke-width%3D%2210%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%2F%3E%3Cpath%20d%3D%22M128%2080L128%20112%22%20stroke%3D%22%23FFFFFF%22%20stroke-opacity%3D%220.6%22%20stroke-width%3D%2210%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%2F%3E%3C%2Fsvg%3E",
+      "src": "/icons/icon-512x512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icons/icon-192x192-maskable.png",
       "sizes": "192x192",
-      "type": "image/svg+xml",
+      "type": "image/png",
       "purpose": "maskable"
     },
     {
-      "src": "data:image/svg+xml,%3Csvg%20width%3D%22192%22%20height%3D%22192%22%20viewBox%3D%220%200%20192%20192%22%20fill%3D%22none%22%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%3E%3Crect%20width%3D%22192%22%20height%3D%22192%22%20rx%3D%2248%22%20fill%3D%22%23181818%22%2F%3E%3Cpath%20d%3D%22M48%2068L80%20124L112%2068%22%20stroke%3D%22%2300DAC6%22%20stroke-width%3D%2216%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%2F%3E%3Cpath%20d%3D%22M112%20124V68%22%20stroke%3D%22%2300DAC6%22%20stroke-width%3D%2216%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%2F%3E%3Cpath%20d%3D%22M144%2068L144%20124%22%20stroke%3D%22%23FFFFFF%22%20stroke-opacity%3D%220.6%22%20stroke-width%3D%2210%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%2F%3E%3Cpath%20d%3D%22M128%2080L128%20112%22%20stroke%3D%22%23FFFFFF%22%20stroke-opacity%3D%220.6%22%20stroke-width%3D%2210%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%2F%3E%3C%2Fsvg%3E",
+      "src": "/icons/icon-512x512-maskable.png",
       "sizes": "512x512",
-      "type": "image/svg+xml",
+      "type": "image/png",
       "purpose": "maskable"
+    }
+  ],
+  "screenshots": [
+    {
+      "src": "/screenshots/screenshot-1-record-dark.svg",
+      "sizes": "1080x1920",
+      "type": "image/svg+xml",
+      "form_factor": "narrow",
+      "label": "Start a new recording session (Dark Mode)"
+    },
+    {
+      "src": "/screenshots/screenshot-2-recording-dark.svg",
+      "sizes": "1080x1920",
+      "type": "image/svg+xml",
+      "form_factor": "narrow",
+      "label": "Recording in progress with timer (Dark Mode)"
+    },
+    {
+      "src": "/screenshots/screenshot-3-sessions-dark.svg",
+      "sizes": "1080x1920",
+      "type": "image/svg+xml",
+      "form_factor": "narrow",
+      "label": "View a list of past sessions (Dark Mode)"
+    },
+    {
+      "src": "/screenshots/screenshot-4-detail-dark.svg",
+      "sizes": "1080x1920",
+      "type": "image/svg+xml",
+      "form_factor": "narrow",
+      "label": "Review AI-generated summary and action items (Dark Mode)"
+    },
+    {
+      "src": "/screenshots/screenshot-5-record-light.svg",
+      "sizes": "1080x1920",
+      "type": "image/svg+xml",
+      "form_factor": "narrow",
+      "label": "Start a new recording session (Light Mode)"
+    },
+    {
+      "src": "/screenshots/screenshot-6-detail-light.svg",
+      "sizes": "1080x1920",
+      "type": "image/svg+xml",
+      "form_factor": "narrow",
+      "label": "Review AI-generated summary and action items (Light Mode)"
     }
   ],
   "start_url": ".",
