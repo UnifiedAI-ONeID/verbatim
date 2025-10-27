@@ -1,4 +1,5 @@
 
+
 import React, { useState, useRef, CSSProperties, useEffect, useCallback, createContext, useContext } from 'react';
 import { createRoot } from 'react-dom/client';
 import { GoogleGenAI, Type, FunctionDeclaration } from "@google/genai";
@@ -45,11 +46,13 @@ const translations = {
         takeAction: 'Take Action ✨',
         noActionDetermined: 'Could not determine a specific action for this item. You can handle it manually.',
         createCalendarEvent: 'Create Google Calendar Event',
+        addToCalendar: 'Add to Calendar',
         titleLabel: 'Title:',
         descriptionLabel: 'Description:',
         dateLabel: 'Date:',
         timeLabel: 'Time:',
-        openInCalendar: 'Open in Google Calendar',
+        openInGoogleCalendar: 'Open in Google Calendar',
+        openInOutlookCalendar: 'Open in Outlook Calendar',
         draftEmail: 'Draft Email',
         toLabel: 'To:',
         subjectLabel: 'Subject:',
@@ -133,11 +136,13 @@ const translations = {
         takeAction: 'Tomar Acción ✨',
         noActionDetermined: 'No se pudo determinar una acción específica para este ítem. Puedes gestionarlo manualmente.',
         createCalendarEvent: 'Crear Evento en Google Calendar',
+        addToCalendar: 'Añadir al Calendario',
         titleLabel: 'Título:',
         descriptionLabel: 'Descripción:',
         dateLabel: 'Fecha:',
         timeLabel: 'Hora:',
-        openInCalendar: 'Abrir en Google Calendar',
+        openInGoogleCalendar: 'Abrir en Google Calendar',
+        openInOutlookCalendar: 'Abrir en Outlook Calendar',
         draftEmail: 'Redactar Correo',
         toLabel: 'Para:',
         subjectLabel: 'Asunto:',
@@ -221,11 +226,13 @@ const translations = {
         takeAction: '执行操作 ✨',
         noActionDetermined: '无法为此项目确定具体操作。请手动处理。',
         createCalendarEvent: '创建谷歌日历活动',
+        addToCalendar: '添加到日历',
         titleLabel: '标题:',
         descriptionLabel: '描述:',
         dateLabel: '日期:',
         timeLabel: '时间:',
-        openInCalendar: '在谷歌日历中打开',
+        openInGoogleCalendar: '在谷歌日历中打开',
+        openInOutlookCalendar: '在 Outlook 日历中打开',
         draftEmail: '草拟邮件',
         toLabel: '收件人:',
         subjectLabel: '主题:',
@@ -309,11 +316,13 @@ const translations = {
         takeAction: '執行操作 ✨',
         noActionDetermined: '無法為此項目確定具體操作。請手動處理。',
         createCalendarEvent: '建立 Google 日曆活動',
+        addToCalendar: '新增至日曆',
         titleLabel: '標題:',
         descriptionLabel: '描述:',
         dateLabel: '日期:',
         timeLabel: '時間:',
-        openInCalendar: '在 Google 日曆中開啟',
+        openInGoogleCalendar: '在 Google 日曆中開啟',
+        openInOutlookCalendar: '在 Outlook 日曆中開啟',
         draftEmail: '草擬郵件',
         toLabel: '收件人:',
         subjectLabel: '主旨:',
@@ -782,7 +791,49 @@ const ActionModal = ({ data, user, onClose }: { data: ActionModalData, user: Use
     const copy = (text: string) => navigator.clipboard.writeText(text).then(() => { setCopied(true); setTimeout(() => setCopied(false), 2000); });
     const content = () => {
         switch (type) {
-            case 'create_calendar_event': { const { title, description, date, time } = args; const start = `${date.replace(/-/g, '')}T${time.replace(/:/g, '')}00`; const url = new URL('https://calendar.google.com/calendar/render'); url.searchParams.set('action', 'TEMPLATE'); url.searchParams.set('text', title); url.searchParams.set('details', description); url.searchParams.set('dates', `${start}/${start}`); return <div><h4>{t.createCalendarEvent}</h4><p><strong>{t.titleLabel}</strong> {title}</p><p><strong>{t.descriptionLabel}</strong> {description}</p><p><strong>{t.dateLabel}</strong> {date} <strong>{t.timeLabel}</strong> {time}</p><a href={url.toString()} target="_blank" rel="noopener noreferrer" style={styles.actionButton}>{t.openInCalendar}</a></div>; }
+            case 'create_calendar_event': {
+                const { title, description, date, time } = args;
+
+                // Helper to format date for Google Calendar (YYYYMMDDTHHMMSS)
+                const toGoogleFormat = (d: Date) => d.toISOString().replace(/[-:.]/g, '').slice(0, 15);
+                // Helper to format date for Outlook Calendar (YYYY-MM-DDTHH:MM:SS)
+                const toOutlookFormat = (d: Date) => d.toISOString().slice(0, 19);
+
+                const startDate = new Date(`${date}T${time}:00`);
+                const endDate = new Date(startDate.getTime() + 60 * 60 * 1000); // Assume 1 hour duration
+
+                // Google Calendar URL
+                const googleUrl = new URL('https://calendar.google.com/calendar/render');
+                googleUrl.searchParams.set('action', 'TEMPLATE');
+                googleUrl.searchParams.set('text', title);
+                googleUrl.searchParams.set('details', description);
+                googleUrl.searchParams.set('dates', `${toGoogleFormat(startDate)}/${toGoogleFormat(endDate)}`);
+
+                // Outlook Calendar URL
+                const outlookUrl = new URL('https://outlook.live.com/calendar/0/deeplink/compose');
+                outlookUrl.searchParams.set('path', '/calendar/action/compose');
+                outlookUrl.searchParams.set('rru', 'addevent');
+                outlookUrl.searchParams.set('subject', title);
+                outlookUrl.searchParams.set('body', description);
+                outlookUrl.searchParams.set('startdt', toOutlookFormat(startDate));
+                outlookUrl.searchParams.set('enddt', toOutlookFormat(endDate));
+                
+                return <div>
+                    <p><strong>{t.titleLabel}</strong> {title}</p>
+                    <p><strong>{t.descriptionLabel}</strong> {description}</p>
+                    <p><strong>{t.dateLabel}</strong> {date} <strong>{t.timeLabel}</strong> {time}</p>
+                    <div style={styles.calendarButtonsContainer}>
+                        <a href={googleUrl.toString()} target="_blank" rel="noopener noreferrer" style={styles.actionButton}>
+                             <img src="https://www.gstatic.com/images/branding/product/2x/calendar_48dp.png" alt="" style={styles.calendarIcon} />
+                            {t.openInGoogleCalendar}
+                        </a>
+                        <a href={outlookUrl.toString()} target="_blank" rel="noopener noreferrer" style={styles.actionButton}>
+                            <img src="https://img.icons8.com/color/48/000000/outlook-calendar.png" alt="" style={styles.calendarIcon} />
+                            {t.openInOutlookCalendar}
+                        </a>
+                    </div>
+                </div>;
+            }
             case 'draft_email': { const { to, subject, body } = args; return <div><h4>{t.draftEmail}</h4><p><strong>{t.toLabel}</strong> {to}</p><p><strong>{t.subjectLabel}</strong> {subject}</p><p><strong>{t.bodyLabel}</strong> <pre style={styles.preformattedText}>{body}</pre></p><a href={`mailto:${to}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`} target="_blank" style={styles.actionButton}>{t.openInEmailApp}</a></div>; }
             case 'draft_invoice_email': { const { recipient_name, item_description, amount } = args; const body = t.invoiceEmailBody.replace('{recipientName}', recipient_name).replace('{itemDescription}', sourceItem || item_description).replace('{currencySymbol}', '$').replace('{amount}', amount).replace('{userName}', user?.displayName || ''); return <div><h4>{t.draftInvoiceEmail}</h4><p><strong>{t.recipientNameLabel}</strong> {recipient_name}</p><p><strong>{t.amountLabel}</strong> ${amount}</p><p><strong>{t.bodyLabel}</strong> <pre style={styles.preformattedText}>{body}</pre></p><a href={`mailto:?subject=${encodeURIComponent(`Invoice for ${item_description}`)}&body=${encodeURIComponent(body)}`} target="_blank" style={styles.actionButton}>{t.openInEmailApp}</a></div>; }
             case 'initiate_phone_call': { const { phone_number, reason } = args; return <div><h4>{t.initiatePhoneCall}</h4><p><strong>{t.phoneNumberLabel}</strong> {phone_number}</p><p><strong>{t.reasonLabel}</strong> {reason}</p><a href={`tel:${phone_number}`} style={styles.actionButton}>{t.callNow}</a></div>; }
@@ -791,7 +842,7 @@ const ActionModal = ({ data, user, onClose }: { data: ActionModalData, user: Use
             default: return <p>{t.noActionDetermined}</p>;
         }
     };
-    const titleMap: Record<string, string> = { create_calendar_event: t.createCalendarEvent, draft_email: t.draftEmail, draft_invoice_email: t.draftInvoiceEmail, initiate_phone_call: t.initiatePhoneCall, create_google_doc: t.createDocument };
+    const titleMap: Record<string, string> = { create_calendar_event: t.addToCalendar, draft_email: t.draftEmail, draft_invoice_email: t.draftInvoiceEmail, initiate_phone_call: t.initiatePhoneCall, create_google_doc: t.createDocument };
     const title = titleMap[type] || t.takeAction;
     return <Modal title={title} onClose={onClose}><p style={styles.sourceItemText}><em>"{sourceItem}"</em></p>{content()}</Modal>;
 };
@@ -890,13 +941,15 @@ const styles: { [key: string]: CSSProperties } = {
     accordionContainer: { marginBottom: '10px', borderRadius: '8px', overflow: 'hidden', border: '1px solid var(--border-color)' },
     accordionHeader: { backgroundColor: 'var(--bg-accent)', padding: '15px', cursor: 'pointer', border: 'none', width: '100%', textAlign: 'left', color: 'var(--text-primary)', fontSize: '1.1rem', fontWeight: 'bold', display: 'flex', justifyContent: 'space-between', alignItems: 'center' },
     accordionContent: { padding: '15px', backgroundColor: 'var(--bg-2)' },
-    actionButton: { display: 'inline-block', marginTop: '15px', padding: '10px 20px', backgroundColor: 'var(--accent-primary)', color: 'var(--accent-primary-text)', textDecoration: 'none', borderRadius: '8px', fontWeight: 'bold' },
+    actionButton: { display: 'flex', alignItems: 'center', justifyContent: 'center', marginTop: '15px', padding: '10px 20px', backgroundColor: 'var(--bg-3)', color: 'var(--text-primary)', textDecoration: 'none', borderRadius: '8px', fontWeight: 'bold', border: '1px solid var(--border-color)' },
     preformattedText: { whiteSpace: 'pre-wrap', backgroundColor: 'var(--bg-3)', padding: '10px', borderRadius: '6px', maxHeight: '150px', overflowY: 'auto' },
     sourceItemText: { color: 'var(--text-secondary)', borderLeft: '3px solid var(--accent-primary)', paddingLeft: '10px', marginBottom: '15px' },
     dedicationOverlay: { position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0, 0, 0, 0.5)', display: 'flex', justifyContent: 'center', alignItems: 'center', zIndex: 3000, overflow: 'hidden' },
     confettiContainer: { position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', pointerEvents: 'none' },
     dedicationModal: { padding: '30px', borderRadius: '12px', textAlign: 'center', color: 'white', textShadow: '0 2px 4px rgba(0,0,0,0.5)' },
     dedicationText: { fontSize: '1.5rem', fontWeight: 'bold', margin: 0 },
+    calendarButtonsContainer: { display: 'flex', flexDirection: 'column', gap: '10px', marginTop: '15px' },
+    calendarIcon: { width: '20px', height: '20px', marginRight: '10px' },
 };
 const styleSheet = document.createElement("style");
 styleSheet.innerText = `@keyframes pulse { 0% { transform: scale(0.95); box-shadow: 0 0 0 0 color-mix(in srgb, var(--danger) 70%, transparent); } 70% { transform: scale(1); box-shadow: 0 0 0 20px color-mix(in srgb, var(--danger) 0%, transparent); } 100% { transform: scale(0.95); box-shadow: 0 0 0 0 color-mix(in srgb, var(--danger) 0%, transparent); } } .slider { position: absolute; cursor: pointer; inset: 0; background-color: var(--bg-3); transition: .4s; border-radius: 28px; } .slider:before { position: absolute; content: ""; height: 20px; width: 20px; left: 4px; bottom: 4px; background-color: white; transition: .4s; border-radius: 50%; } input { opacity: 0; width: 0; height: 0; } input:checked + .slider { background-color: var(--accent-primary); } input:checked + .slider:before { transform: translateX(22px); }
