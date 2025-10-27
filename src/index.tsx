@@ -1,4 +1,5 @@
 
+
 import React, { useState, useRef, CSSProperties, useEffect, useCallback, createContext, useContext } from 'react';
 import { createRoot } from 'react-dom/client';
 import { GoogleGenAI, Type, FunctionDeclaration } from "@google/genai";
@@ -680,7 +681,7 @@ const Header = ({ user, onSignIn, onLogoClick }: { user: User | null; onSignIn: 
     const { theme, toggleTheme } = useTheme();
     return (
         <header style={styles.header}>
-            <div style={styles.logo} onClick={onLogoClick} role="button" aria-label="Verbatim Logo"><svg width="32" height="32" viewBox="0 0 192 192" fill="none" xmlns="http://www.w3.org/2000/svg"><rect width="192" height="192" rx="48" fill="var(--bg-3)"/><path d="M48 68L80 124L112 68" stroke="var(--accent-primary)" strokeWidth="16" strokeLinecap="round"/><path d="M112 124V68" stroke="var(--accent-primary)" strokeWidth="16" strokeLinecap="round"/><path d="M144 68L144 124" stroke="var(--text-secondary)" strokeOpacity="0.6" strokeWidth="10" strokeLinecap="round"/><path d="M128 80L128 112" stroke="var(--text-secondary)" strokeOpacity="0.6" strokeWidth="10" strokeLinecap="round"/></svg><span style={{color: 'var(--accent-primary)'}}>{t.title}</span></div>
+            <div style={styles.logo} onClick={onLogoClick} role="button" aria-label="Verbatim Logo"><svg width="32" height="32" viewBox="0 0 192 192" fill="none" xmlns="http://www.w3.org/2000/svg"><rect width="192" height="192" rx="48" fill="var(--bg-3)"/><path d="M48 95L78 125L114 89" stroke="var(--accent-primary)" strokeWidth="18" strokeLinecap="round" strokeLinejoin="round"/><path d="M128 89V125" stroke="var(--text-secondary)" strokeWidth="12" strokeLinecap="round"/><path d="M144 75V125" stroke="var(--text-secondary)" strokeWidth="12" strokeLinecap="round"/></svg><span style={{color: 'var(--accent-primary)'}}>{t.title}</span></div>
             <div style={styles.headerControls}>
                  <select value={lang} onChange={e => setLang(e.target.value as Language)} style={styles.headerSelect} aria-label={t.language}><option value="en">EN</option><option value="es">ES</option><option value="zh-CN">简体</option><option value="zh-TW">繁體</option></select>
                 <button onClick={toggleTheme} style={styles.themeToggleButton} aria-label={`${t.theme}: ${theme}`}>{theme === 'light' ? '🌙' : '☀️'}</button>
