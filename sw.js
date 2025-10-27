@@ -1,6 +1,6 @@
 
 
-const CACHE_NAME = 'verbatim-v13';
+const CACHE_NAME = 'verbatim-v15';
 const urlsToCache = [
   '/',
   '/index.html',
@@ -8,6 +8,8 @@ const urlsToCache = [
   '/pip.tsx',
   '/pip.html',
   '/manifest.json',
+  '/favicon.ico',
+  '/icon.svg',
   '/icons/icon-16x16.png',
   '/icons/icon-32x32.png',
   '/icons/icon-48x48.png',
