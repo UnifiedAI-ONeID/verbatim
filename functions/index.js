@@ -39,6 +39,20 @@ exports.analyzeAudio = functions.runWith({timeoutSeconds: 540, memory: '1GB'}).h
 
   try {
     const file = storage.bucket().file(filePath);
+
+    // Security enhancement: Validate file type before processing
+    const [metadata] = await file.getMetadata();
+    if (metadata.contentType !== "audio/webm") {
+        await sessionDocRef.update({
+          status: "error",
+          error: "Invalid file type. Only 'audio/webm' is accepted.",
+        });
+        throw new functions.https.HttpsError(
+            "invalid-argument",
+            "Invalid file type."
+        );
+    }
+      
     const [audioBytes] = await file.download();
     const base64Audio = audioBytes.toString("base64");
 

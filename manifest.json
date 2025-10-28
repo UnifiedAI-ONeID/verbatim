@@ -2,7 +2,7 @@
 {
   "short_name": "Verbatim",
   "name": "Verbatim: AI Meeting Assistant",
-  "description": "An Intelligent Pocket Personal Asistant that generate a full transcript with speaker labels, a key summary, and actionable next steps.",
+  "description": "An AI-powered meeting assistant that records audio and uses Gemini to generate a full transcript with speaker labels, a key summary, and actionable next steps.",
   "icons": [
     {
       "src": "/icon.svg",
