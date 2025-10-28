@@ -8,21 +8,40 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;600;700&display=swap" rel="stylesheet">
+  
+  <!-- PWA Manifest -->
   <link rel="manifest" href="/manifest.json">
   
-  <!-- General Purpose Favicons -->
-  <link rel="icon" href="/favicon.ico" sizes="any">
+  <!--
+    ICON STRATEGY for Maximum Compatibility:
+    - Primary SVG icon for modern browsers that support it.
+    - An ICO file for legacy browser support.
+    - A full range of PNG sizes for Android 'Add to Home Screen' and other platforms.
+    - A comprehensive set of 'apple-touch-icon' links for all iOS devices.
+  -->
+
+  <!-- Favicon: SVG for modern browsers, ICO for fallback. -->
   <link rel="icon" href="/icon.svg" type="image/svg+xml">
-  
-  <!-- Standard PNG Icons -->
-  <link rel="icon" type="image/png" sizes="16x16" href="/icons/icon-16x16.png">
-  <link rel="icon" type="image/png" sizes="32x32" href="/icons/icon-32x32.png">
-  <link rel="icon" type="image/png" sizes="48x48" href="/icons/icon-48x48.png">
-  <link rel="icon" type="image/png" sizes="192x192" href="/icons/icon-192x192.png">
+  <link rel="alternate icon" href="/favicon.ico" sizes="any"> <!-- Fallback for browsers that don't support SVG favicons -->
+
+  <!-- Apple Touch Icons for iOS Home Screen -->
+  <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png"> <!-- General fallback, ideally 180x180 -->
+  <link rel="apple-touch-icon" sizes="152x152" href="/icons/icon-152x152.png">
+  <link rel="apple-touch-icon" sizes="144x144" href="/icons/icon-144x144.png">
+  <!-- Use next largest available icon for sizes not explicitly provided -->
+  <link rel="apple-touch-icon" sizes="120x120" href="/icons/icon-128x128.png"> 
+  <link rel="apple-touch-icon" sizes="114x114" href="/icons/icon-128x128.png">
+  <link rel="apple-touch-icon" sizes="72x72" href="/icons/icon-72x72.png">
+
+  <!-- Standard PNG Icons (used by Android and others) -->
   <link rel="icon" type="image/png" sizes="512x512" href="/icons/icon-512x512.png">
-  
-  <!-- Apple Touch Icon (for iOS Home Screen) -->
-  <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png">
+  <link rel="icon" type="image/png" sizes="192x192" href="/icons/icon-192x192.png">
+  <link rel="icon" type="image/png" sizes="48x48" href="/icons/icon-48x48.png">
+  <link rel="icon" type="image/png" sizes="32x32" href="/icons/icon-32x32.png">
+  <link rel="icon" type="image/png" sizes="16x16" href="/icons/icon-16x16.png">
+
+  <!-- Safari Pinned Tab Icon -->
+  <link rel="mask-icon" href="/icon.svg" color="#00DAC6">
   
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
