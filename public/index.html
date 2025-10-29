@@ -152,16 +152,9 @@
     "react": "https://aistudiocdn.com/react@^19.2.0",
     "react/": "https://aistudiocdn.com/react@^19.2.0/",
     "react-dom/": "https://aistudiocdn.com/react-dom@^19.2.0/",
-    "@google/genai": "https://aistudiocdn.com/@google/genai@^1.26.0",
     "marked": "https://aistudiocdn.com/marked@^13.0.0",
-    "firebase/app": "https://www.gstatic.com/firebasejs/9.22.2/firebase-app.js",
-    "firebase/auth": "https://www.gstatic.com/firebasejs/9.22.2/firebase-auth.js",
-    "firebase/firestore": "https://www.gstatic.com/firebasejs/9.22.2/firebase-firestore.js",
-    "firebase/storage": "https://www.gstatic.com/firebasejs/9.22.2/firebase-storage.js",
-    "firebase/functions": "https://www.gstatic.com/firebasejs/9.22.2/firebase-functions.js",
-    "firebase/": "https://aistudiocdn.com/firebase@^12.4.0/",
-    "@firebase/auth": "https://aistudiocdn.com/@firebase/auth@^1.11.0",
     "@firebase/app": "https://aistudiocdn.com/@firebase/app@^0.14.4",
+    "@firebase/auth": "https://aistudiocdn.com/@firebase/auth@^1.11.0",
     "@firebase/firestore": "https://aistudiocdn.com/@firebase/firestore@^4.9.2",
     "@firebase/storage": "https://aistudiocdn.com/@firebase/storage@^0.14.0",
     "@firebase/functions": "https://aistudiocdn.com/@firebase/functions@^0.13.1"
@@ -172,6 +165,17 @@
 <body>
   <noscript>You need to enable JavaScript to run this app.</noscript>
   <div id="root"></div>
+
+  <!-- Firebase SDK -->
+  <script src="/__/firebase/9.22.2/firebase-app-compat.js"></script>
+  <script src="/__/firebase/9.22.2/firebase-auth-compat.js"></script>
+  <script src="/__/firebase/9.22.2/firebase-firestore-compat.js"></script>
+  <script src="/__/firebase/9.22.2/firebase-storage-compat.js"></script>
+  <script src="/__/firebase/9.22.2/firebase-functions-compat.js"></script>
+
+  <!-- Initialize Firebase -->
+  <script src="/__/firebase/init.js"></script>
+  
   <script type="module" src="/index.tsx"></script>
 </body>
 </html>

@@ -1,0 +1,10 @@
+backend:
+  run:
+    build:
+      - npm install
+      - npm run build
+    start:
+      - npm start
+  env:
+    GEMINI_API_KEY:
+      secret: GEMINI_API_KEY
