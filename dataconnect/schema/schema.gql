@@ -1,0 +1,56 @@
+type User @table {
+  username: String!
+  email: String!
+  createdAt: Timestamp!
+  firstName: String
+  lastName: String
+  profilePictureUrl: String
+}
+
+type Task @table {
+  title: String!
+  dueDate: Timestamp!
+  priority: String!
+  status: String!
+  createdAt: Timestamp!
+  description: String
+  user: User
+}
+
+type Event @table {
+  title: String!
+  startTime: Timestamp!
+  endTime: Timestamp!
+  createdAt: Timestamp!
+  description: String
+  location: String
+  user: User
+}
+
+type Reminder @table {
+  message: String!
+  reminderTime: Timestamp!
+  createdAt: Timestamp!
+  associatedTask: Task
+  associatedEvent: Event
+  user: User
+}
+
+type Note @table {
+  title: String!
+  content: String!
+  createdAt: Timestamp!
+  tags: [String]
+  user: User
+}
+
+type Contact @table {
+  firstName: String!
+  lastName: String!
+  createdAt: Timestamp!
+  email: String
+  phoneNumber: String
+  address: String
+  notes: String
+  user: User
+}

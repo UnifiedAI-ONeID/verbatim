@@ -1,6 +1,7 @@
 
 {
   "hosting": {
+    "site": "verbatim-pa-50946397-928b2",
     "public": "public",
     "ignore": [
       "firebase.json",
