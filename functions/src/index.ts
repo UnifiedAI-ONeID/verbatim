@@ -12,7 +12,7 @@ const storage = admin.storage();
 // Get Gemini API Key from environment variables
 let geminiApiKey: string | undefined;
 try {
-    geminiApiKey = process.env.GEMINI_KEY;
+    geminiApiKey = process.env.GEMINI_API_KEY;
 } catch (error) {
     console.error("Could not retrieve Gemini API key.");
 }
