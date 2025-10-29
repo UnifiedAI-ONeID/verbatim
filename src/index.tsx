@@ -1,18 +1,46 @@
 
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { createRoot } from 'react-dom/client';
-import { getFirestore, collection, onSnapshot, doc, deleteDoc, addDoc, updateDoc, serverTimestamp } from '@firebase/firestore';
-import { getStorage, ref as storageRef, uploadBytes } from '@firebase/storage';
-import { getAuth, GoogleAuthProvider, signInWithPopup, signOut as firebaseSignOut } from '@firebase/auth';
-import { getFunctions, httpsCallable } from '@firebase/functions';
+import { initializeApp } from 'firebase/app';
+import { getFirestore, collection, onSnapshot, doc, deleteDoc, addDoc, updateDoc, serverTimestamp } from 'firebase/firestore';
+import { getStorage, ref as storageRef, uploadBytes } from 'firebase/storage';
+import { getAuth, GoogleAuthProvider, signInWithPopup, signOut as firebaseSignOut } from 'firebase/auth';
+import { getFunctions, httpsCallable } from 'firebase/functions';
 import { marked } from 'marked';
 
 // --- Firebase and App Initialization ---
-const firebaseApp = (window as any).firebase.app();
+// Import the functions you need from the SDKs you need
+import { initializeApp } from "firebase/app";
+// TODO: Add SDKs for Firebase products that you want to use
+// https://firebase.google.com/docs/web/setup#available-libraries
+
+// Your web app's Firebase configuration
+// Import the functions you need from the SDKs you need
+import { initializeApp } from "firebase/app";
+// TODO: Add SDKs for Firebase products that you want to use
+// https://firebase.google.com/docs/web/setup#available-libraries
+
+// Your web app's Firebase configuration
+const firebaseConfig = {
+  apiKey: "AIzaSyDj57lfDQ7CXmu7wjuXhNQHL7ReURGs6pA",
+  authDomain: "verbatim-pa-50946397-928b2.firebaseapp.com",
+  projectId: "verbatim-pa-50946397-928b2",
+  storageBucket: "verbatim-pa-50946397-928b2.firebasestorage.app",
+  messagingSenderId: "419412918935",
+  appId: "1:419412918935:web:6b3105cde2b51b24b5dfd2"
+};
+
+// Initialize Firebase
+const app = initializeApp(firebaseConfig);
+
+// Initialize Firebase
+const app = initializeApp(firebaseConfig);
+const firebaseApp = initializeApp(firebaseConfig);
 const db = getFirestore(firebaseApp);
 const storage = getStorage(firebaseApp);
 const auth = getAuth(firebaseApp);
 const functions = getFunctions(firebaseApp);
+
 
 // --- React Components ---
 
