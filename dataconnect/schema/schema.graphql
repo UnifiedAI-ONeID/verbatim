@@ -18,4 +18,5 @@ type Mutation {
   updateSession(id: ID!, status: String, uploadProgress: Float, audioUrl: String, transcription: String, summary: String): Session
   deleteSession(id: ID!): Session
   generateSummary(transcript: String!): String
+  deleteAccount: Boolean
 }

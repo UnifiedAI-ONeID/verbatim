@@ -1,5 +1,4 @@
 connectorId: verbatim-genai
-location: us-central1
 schema:
   path: schema
 service:
@@ -7,3 +6,4 @@ service:
 sdk:
   typescript:
     outputDir: ../dataconnect-generated
+location: us-central1
