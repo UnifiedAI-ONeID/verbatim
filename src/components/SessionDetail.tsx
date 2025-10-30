@@ -1,11 +1,11 @@
 
 import React from 'react';
-import { useGetSession } from '../dataconnect-generated/react';
+import { useSession } from '../dataconnect-generated/react';
 import GenAIPrompt from './GenAIPrompt';
 import '../style.css';
 
 const SessionDetail = ({ sessionId, onBack }: { sessionId: string, onBack: () => void }) => {
-    const { data, loading, error } = useGetSession({ variables: { id: sessionId } });
+    const { data, loading, error } = useSession({ variables: { id: sessionId } });
 
     if (loading) return <div className="loading-indicator"></div>;
     if (error) return <p>Error loading session: {error.message}</p>;
