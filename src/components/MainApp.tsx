@@ -7,6 +7,7 @@ import '../style.css';
 import Login from './Login';
 import SessionDetail from './SessionDetail';
 import { httpsCallable } from 'firebase/functions';
+import { startRecording } from '../utils/recorder';
 
 const LIST_SESSIONS = gql`
     query ListSessions {
@@ -36,6 +37,10 @@ const MainApp = ({ user, loading }: { user: User | null, loading: boolean }) => 
             if (!pipWindow && !hasBeenPrompted) {
                 alert('Please allow pop-ups for this site to use the recording feature.');
                 localStorage.setItem('hasBeenPromptedForPip', 'true');
+            } else if (pipWindow) {
+                pipWindow.onload = () => {
+                    startRecording();
+                };
             }
         } else {
             alert("Please log in to start a new session.");

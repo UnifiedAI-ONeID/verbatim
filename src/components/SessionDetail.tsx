@@ -1,31 +1,21 @@
 
 import React from 'react';
-import { useQuery, gql } from '@apollo/client';
+import { doc } from 'firebase/firestore';
+import { useDocument } from 'react-firebase-hooks/firestore';
+import { db } from '../firebase';
 import GenAIPrompt from './GenAIPrompt';
 import '../style.css';
 
-const GET_SESSION = gql`
-    query GetSession($sessionId: ID!) {
-        session(id: $sessionId) {
-            id
-            createdAt
-            status
-            transcription
-            audioUrl
-        }
-    }
-`;
-
 const SessionDetail = ({ sessionId, onBack }: { sessionId: string, onBack: () => void }) => {
-    const { data, loading, error } = useQuery(GET_SESSION, {
-        variables: { sessionId },
+    const [snapshot, loading, error] = useDocument(doc(db, `sessions/${sessionId}`), {
+        snapshotListenOptions: { includeMetadataChanges: true },
     });
 
     if (loading) return <div className="loading-indicator"></div>;
     if (error) return <p>Error loading session: {error.message}</p>;
-    if (!data || !data.session) return <p>Session not found.</p>;
+    if (!snapshot || !snapshot.exists()) return <p>Session not found.</p>;
 
-    const { session } = data;
+    const session = snapshot.data();
 
     return (
         <div className="session-detail-container">
@@ -33,9 +23,16 @@ const SessionDetail = ({ sessionId, onBack }: { sessionId: string, onBack: () =>
             <header>
                 <h2>Session Details</h2>
                 <p><strong>ID:</strong> {session.id}</p>
-                <p><strong>Date:</strong> {new Date(session.createdAt).toLocaleString()}</p>
-                <p><strong>Status:</strong> <span className={`status-${session.status.toLowerCase()}`}>{session.status}</span></p>
+                <p><strong>Date:</strong> {new Date(session.createdAt?.toDate()).toLocaleString()}</p>
+                <p><strong>Status:</strong> <span className={`status-${session.status?.toLowerCase()}`}>{session.status}</span></p>
             </header>
+
+            {session.status === 'uploading' && session.uploadProgress > 0 && (
+                <div className="progress-bar-container">
+                    <progress value={session.uploadProgress} max="100"></progress>
+                    <span>Uploading: {session.uploadProgress.toFixed(2)}%</span>
+                </div>
+            )}
 
             {session.audioUrl && (
                 <section className="audio-player-container">
@@ -53,7 +50,7 @@ const SessionDetail = ({ sessionId, onBack }: { sessionId: string, onBack: () =>
                 </section>
             )}
 
-            <GenAIPrompt sessionId={sessionId} />
+            <GenAIPrompt session={session} />
         </div>
     );
 };

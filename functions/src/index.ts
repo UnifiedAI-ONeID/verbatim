@@ -1,5 +1,5 @@
 
-import { onCall, HttpsError } from "firebase-functions/v2/https";
+import * as functions from "firebase-functions";
 import * as admin from "firebase-admin";
 import { GoogleGenerativeAI } from "@google/generative-ai";
 
@@ -21,23 +21,19 @@ const genAI = new GoogleGenerativeAI(geminiApiKey as string);
 /**
  * Callable function to analyze audio from a session.
  */
-export const analyzeAudio = onCall({ 
-    timeoutSeconds: 540, 
-    memory: '1GiB',
-    secrets: ["GEMINI_API_KEY"],
-}, async (request) => {
-    if (!request.auth) {
-        throw new HttpsError("unauthenticated", "The function must be called while authenticated.");
+export const analyzeAudio = functions.https.onCall(async (data, context) => {
+    if (!context.auth) {
+        throw new functions.https.HttpsError("unauthenticated", "The function must be called while authenticated.");
     }
     if (!geminiApiKey) {
-        throw new HttpsError("internal", "Server is not configured with a Gemini API key.");
+        throw new functions.https.HttpsError("internal", "Server is not configured with a Gemini API key.");
     }
 
-    const { sessionId, prompt } = request.data;
-    const uid = request.auth.uid;
+    const { sessionId, prompt } = data;
+    const uid = context.auth.uid;
 
     if (!sessionId || !prompt) {
-        throw new HttpsError("invalid-argument", "The function must be called with 'sessionId' and 'prompt' arguments.");
+        throw new functions.https.HttpsError("invalid-argument", "The function must be called with 'sessionId' and 'prompt' arguments.");
     }
 
     const sessionRef = db.doc(`users/${uid}/sessions/${sessionId}`);
@@ -52,7 +48,7 @@ export const analyzeAudio = onCall({
 
         if (!fileExists) {
             await sessionRef.update({ status: 'error', error: 'Audio file not found.' });
-            throw new HttpsError("not-found", "Audio file not found in Storage.");
+            throw new functions.https.HttpsError("not-found", "Audio file not found in Storage.");
         }
 
         const model = genAI.getGenerativeModel({ model: "gemini-1.5-pro-latest" });
@@ -88,10 +84,10 @@ export const analyzeAudio = onCall({
             error: errorMessage
         });
         // Throwing an HttpsError to be caught by the client
-        if (error instanceof HttpsError) {
+        if (error instanceof functions.https.HttpsError) {
             throw error;
         } else {
-            throw new HttpsError("internal", errorMessage, error);
+            throw new functions.https.HttpsError("internal", errorMessage, error);
         }
     }
 });
@@ -99,17 +95,17 @@ export const analyzeAudio = onCall({
 /**
  * Callable function to determine the next action based on context.
  */
-export const takeAction = onCall({ secrets: ["GEMINI_API_KEY"] }, async (request) => {
-    if (!request.auth) {
-        throw new HttpsError("unauthenticated", "The function must be called while authenticated.");
+export const takeAction = functions.https.onCall(async (data, context) => {
+    if (!context.auth) {
+        throw new functions.https.HttpsError("unauthenticated", "The function must be called while authenticated.");
     }
      if (!geminiApiKey) {
-        throw new HttpsError("internal", "Server is not configured with a Gemini API key.");
+        throw new functions.https.HttpsError("internal", "Server is not configured with a Gemini API key.");
     }
 
-    const { prompt } = request.data;
+    const { prompt } = data;
     if (!prompt) {
-        throw new HttpsError("invalid-argument", "The function must be called with a 'prompt' argument.");
+        throw new functions.https.HttpsError("invalid-argument", "The function must be called with a 'prompt' argument.");
     }
     
     try {
@@ -129,42 +125,42 @@ export const takeAction = onCall({ secrets: ["GEMINI_API_KEY"] }, async (request
 
     } catch (error: any) {
         console.error("Error in takeAction function:", error);
-        throw new HttpsError("internal", "Failed to determine action.", error);
+        throw new functions.https.HttpsError("internal", "Failed to determine action.", error);
     }
 });
 
 /**
  * Callable function to list all sessions for a user.
  */
-export const listSessions = onCall(async (request) => {
-    if (!request.auth) {
-        throw new HttpsError("unauthenticated", "The function must be called while authenticated.");
+export const listSessions = functions.https.onCall(async (data, context) => {
+    if (!context.auth) {
+        throw new functions.https.HttpsError("unauthenticated", "The function must be called while authenticated.");
     }
-    const uid = request.auth.uid;
+    const uid = context.auth.uid;
     try {
         const sessionsSnapshot = await db.collection(`users/${uid}/sessions`).get();
         const sessions = sessionsSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
         return { sessions };
     } catch (error) {
         console.error("Error listing sessions for user " + uid, error);
-        throw new HttpsError("internal", "Unable to list sessions.");
+        throw new functions.https.HttpsError("internal", "Unable to list sessions.");
     }
 });
 
 /**
  * Callable function to delete a specific session.
  */
-export const deleteSession = onCall(async (request) => {
-    if (!request.auth) {
-        throw new HttpsError("unauthenticated", "The function must be called while authenticated.");
+export const deleteSession = functions.https.onCall(async (data, context) => {
+    if (!context.auth) {
+        throw new functions.https.HttpsError("unauthenticated", "The function must be called while authenticated.");
     }
 
-    const { sessionId } = request.data;
+    const { sessionId } = data;
     if (!sessionId) {
-        throw new HttpsError("invalid-argument", "The function must be called with a 'sessionId' argument.");
+        throw new functions.https.HttpsError("invalid-argument", "The function must be called with a 'sessionId' argument.");
     }
 
-    const uid = request.auth.uid;
+    const uid = context.auth.uid;
     const sessionRef = db.doc(`users/${uid}/sessions/${sessionId}`);
     const filePath = `recordings/${uid}/${sessionId}.webm`;
     const bucket = storage.bucket();
@@ -178,18 +174,18 @@ export const deleteSession = onCall(async (request) => {
         return { success: true, message: "Session and recording deleted successfully." };
     } catch (error) {
         console.error(`Error deleting session ${sessionId} for user ${uid}`, error);
-        throw new HttpsError("internal", "Unable to delete session.");
+        throw new functions.https.HttpsError("internal", "Unable to delete session.");
     }
 });
 
 /**
  * Callable function to delete a user's account and all their data.
  */
-export const deleteAccount = onCall(async (request) => {
-    if (!request.auth) {
-        throw new HttpsError("unauthenticated", "The function must be called while authenticated.");
+export const deleteAccount = functions.https.onCall(async (data, context) => {
+    if (!context.auth) {
+        throw new functions.https.HttpsError("unauthenticated", "The function must be called while authenticated.");
     }
-    const uid = request.auth.uid;
+    const uid = context.auth.uid;
 
     try {
         // Recursively delete all documents and subcollections under the user's document
@@ -208,6 +204,6 @@ export const deleteAccount = onCall(async (request) => {
         console.error("Error deleting account for user " + uid, error);
         // It's possible the user has already been deleted or other issues,
         // so we provide a generic error message.
-        throw new HttpsError("internal", "An error occurred while deleting the account.", error);
+        throw new functions.https.HttpsError("internal", "An error occurred while deleting the account.", error);
     }
 });
