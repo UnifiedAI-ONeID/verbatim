@@ -1,9 +1,13 @@
-connectorId: verbatim-genai
-schema:
-  path: schema
-service:
-  path: src
-sdk:
-  typescript:
-    outputDir: ../dataconnect-generated
-location: us-central1
+
+# The version of the dataconnect.yaml schema.
+schemaVersion: 1
+
+# The ID of the connector, and the name of the generated SDK.
+connectorId: "verbatim"
+
+# The data source for this connector.
+# All generated queries and mutations will be for this data source.
+dataSource: "projects/${projectId}/databases/(default)"
+
+# The location of the service. This MUST match the location of your Firestore database.
+location: "us-west2"
