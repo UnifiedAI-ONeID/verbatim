@@ -1,7 +1,7 @@
 
-import { auth, db } from '../firebase';
-import { addDoc, collection, doc, serverTimestamp, updateDoc } from 'firebase/firestore';
+import { auth } from '../firebase';
 import { getStorage, ref, uploadBytesResumable, getDownloadURL } from "firebase/storage";
+import { createSession, updateSession } from '../dataconnect-generated/react';
 
 const channel = new BroadcastChannel('verbatim_pip_channel');
 const storage = getStorage();
@@ -11,7 +11,6 @@ let recordingInterval: number | null = null;
 let recordingStartTime: number | null = null;
 
 const upload = async (blob: Blob, sessionId: string, uid: string) => {
-    const sessionRef = doc(db, `users/${uid}/sessions/${sessionId}`);
     const storageRef = ref(storage, `recordings/${uid}/${sessionId}.webm`);
 
     const uploadTask = uploadBytesResumable(storageRef, blob);
@@ -20,18 +19,21 @@ const upload = async (blob: Blob, sessionId: string, uid: string) => {
         (snapshot) => {
             const progress = (snapshot.bytesTransferred / snapshot.totalBytes) * 100;
             console.log('Upload is ' + progress + '% done');
-            updateDoc(sessionRef, { uploadProgress: progress, status: 'uploading' });
+            updateSession({ variables: { id: sessionId, uploadProgress: progress, status: 'uploading' } });
         },
         (error) => {
             console.error("Upload failed:", error);
-            updateDoc(sessionRef, { status: 'error', error: 'Upload failed' });
+            updateSession({ variables: { id: sessionId, status: 'error' } });
         },
         async () => {
             const downloadURL = await getDownloadURL(uploadTask.snapshot.ref);
-            updateDoc(sessionRef, {
-                status: 'uploaded',
-                recordingUrl: downloadURL,
-                uploadProgress: 100,
+            await updateSession({
+                variables: {
+                    id: sessionId,
+                    status: 'uploaded',
+                    audioUrl: downloadURL,
+                    uploadProgress: 100,
+                }
             });
             console.log("Upload complete, file available at", downloadURL);
         }
@@ -60,12 +62,8 @@ export const startRecording = async () => {
         const audioStream = await navigator.mediaDevices.getUserMedia({ audio: true });
         const combinedStream = new MediaStream([...stream.getTracks(), ...audioStream.getTracks()]);
 
-
-        const sessionRef = await addDoc(collection(db, `users/${uid}/sessions`), {
-            createdAt: serverTimestamp(),
-            status: 'recording',
-        });
-        const sessionId = sessionRef.id;
+        const result = await createSession({ variables: { status: 'recording' } });
+        const sessionId = result.data.id;
 
 
         const recordedChunks: Blob[] = [];

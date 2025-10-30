@@ -1,21 +1,17 @@
 
 import React from 'react';
-import { doc } from 'firebase/firestore';
-import { useDocument } from 'react-firebase-hooks/firestore';
-import { db } from '../firebase';
+import { useGetSession } from '../dataconnect-generated/react';
 import GenAIPrompt from './GenAIPrompt';
 import '../style.css';
 
 const SessionDetail = ({ sessionId, onBack }: { sessionId: string, onBack: () => void }) => {
-    const [snapshot, loading, error] = useDocument(doc(db, `sessions/${sessionId}`), {
-        snapshotListenOptions: { includeMetadataChanges: true },
-    });
+    const { data, loading, error } = useGetSession({ variables: { id: sessionId } });
 
     if (loading) return <div className="loading-indicator"></div>;
     if (error) return <p>Error loading session: {error.message}</p>;
-    if (!snapshot || !snapshot.exists()) return <p>Session not found.</p>;
+    if (!data) return <p>Session not found.</p>;
 
-    const session = snapshot.data();
+    const session = data.session;
 
     return (
         <div className="session-detail-container">
@@ -23,7 +19,7 @@ const SessionDetail = ({ sessionId, onBack }: { sessionId: string, onBack: () =>
             <header>
                 <h2>Session Details</h2>
                 <p><strong>ID:</strong> {session.id}</p>
-                <p><strong>Date:</strong> {new Date(session.createdAt?.toDate()).toLocaleString()}</p>
+                <p><strong>Date:</strong> {new Date(session.createdAt).toLocaleString()}</p>
                 <p><strong>Status:</strong> <span className={`status-${session.status?.toLowerCase()}`}>{session.status}</span></p>
             </header>
 

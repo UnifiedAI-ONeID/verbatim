@@ -2,28 +2,18 @@
 import React, { useState } from 'react';
 import { User, signOut } from 'firebase/auth';
 import { auth, functions } from '../firebase';
-import { useQuery, gql } from '@apollo/client';
 import '../style.css';
 import Login from './Login';
 import SessionDetail from './SessionDetail';
 import { httpsCallable } from 'firebase/functions';
 import { startRecording } from '../utils/recorder';
-
-const LIST_SESSIONS = gql`
-    query ListSessions {
-        sessions {
-            id
-            createdAt
-            status
-        }
-    }
-`;
+import { useListSessions } from '../dataconnect-generated/react';
 
 const deleteAccount = httpsCallable(functions, 'deleteAccount');
 
 const MainApp = ({ user, loading }: { user: User | null, loading: boolean }) => {
     const [selectedSession, setSelectedSession] = useState<string | null>(null);
-    const { data, loading: sessionsLoading, error, refetch } = useQuery(LIST_SESSIONS, { skip: !user });
+    const { data, loading: sessionsLoading, error } = useListSessions({ skip: !user });
 
     const handleLogout = () => {
         signOut(auth);
@@ -52,7 +42,7 @@ const MainApp = ({ user, loading }: { user: User | null, loading: boolean }) => 
             try {
                 await deleteAccount();
                 alert("Account deleted successfully.");
-                handleLogout(); 
+                handleLogout();
             } catch (error) {
                 console.error("Error deleting account:", error);
                 alert("Failed to delete account. Please try again.");
