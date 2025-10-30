@@ -1,7 +1,14 @@
 
 import React from 'react';
-import { createRoot } from 'react-dom/client';
+import ReactDOM from 'react-dom/client';
 import App from './components/App';
+import DataConnectProvider from './components/DataConnect';
+import './style.css';
 
-const root = createRoot(document.getElementById('root') as HTMLElement);
-root.render(<App />);
+ReactDOM.createRoot(document.getElementById('root') as HTMLElement).render(
+  <React.StrictMode>
+    <DataConnectProvider>
+      <App />
+    </DataConnectProvider>
+  </React.StrictMode>
+);

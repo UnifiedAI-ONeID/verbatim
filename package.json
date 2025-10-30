@@ -1,3 +1,4 @@
+
 {
   "name": "verbatim-app",
   "private": true,
@@ -9,10 +10,10 @@
     "preview": "vite preview"
   },
   "dependencies": {
-    "@apollo/client": "^3.7.17",
     "@dataconnect/generated": "file:dataconnect-generated",
     "@google/genai": "^1.28.0",
-    "firebase": "^12.4.0",
+    "firebase": "12.0.0",
+    "@tanstack/react-query": "^5.45.1",
     "@tanstack-query-firebase/react": "latest",
     "marked": "^13.0.1",
     "react": "^18.3.1",
@@ -24,5 +25,8 @@
     "@vitejs/plugin-react": "^4.2.0",
     "typescript": "^5.2.2",
     "vite": "^6.4.1"
+  },
+  "resolutions": {
+    "firebase": "12.0.0"
   }
 }

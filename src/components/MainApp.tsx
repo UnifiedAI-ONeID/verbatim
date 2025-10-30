@@ -1,19 +1,17 @@
 
 import React, { useState } from 'react';
 import { User, signOut } from 'firebase/auth';
-import { auth, functions } from '../firebase';
+import { auth } from '../firebase';
 import '../style.css';
 import Login from './Login';
 import SessionDetail from './SessionDetail';
-import { httpsCallable } from 'firebase/functions';
 import { startRecording } from '../utils/recorder';
-import { useSessions } from '../../dataconnect-generated/react/hooks';
-
-const deleteAccount = httpsCallable(functions, 'deleteAccount');
+import { useSessions, useDeleteAccountMutation } from '../../dataconnect-generated/react/hooks';
 
 const MainApp = ({ user, loading }: { user: User | null, loading: boolean }) => {
     const [selectedSession, setSelectedSession] = useState<string | null>(null);
     const { data, loading: sessionsLoading, error } = useSessions({ skip: !user });
+    const [deleteAccount, { loading: deleteLoading, error: deleteError }] = useDeleteAccountMutation();
 
     const handleLogout = () => {
         signOut(auth);
@@ -43,7 +41,8 @@ const MainApp = ({ user, loading }: { user: User | null, loading: boolean }) => 
                 await deleteAccount();
                 alert("Account deleted successfully.");
                 handleLogout();
-            } catch (error) {
+            } catch (error)
+ {
                 console.error("Error deleting account:", error);
                 alert("Failed to delete account. Please try again.");
             }
@@ -65,7 +64,9 @@ const MainApp = ({ user, loading }: { user: User | null, loading: boolean }) => 
                 <div>
                     <span>{user.email}</span>
                     <button onClick={handleLogout} className="secondary-button">Logout</button>
-                    <button onClick={handleDeleteAccount} className="secondary-button">Delete Account</button>
+                    <button onClick={handleDeleteAccount} className="secondary-button" disabled={deleteLoading}>
+                        {deleteLoading ? 'Deleting...' : 'Delete Account'}
+                    </button>
                 </div>
             </header>
             <div className="main-app-container">
@@ -73,6 +74,7 @@ const MainApp = ({ user, loading }: { user: User | null, loading: boolean }) => 
                     <button onClick={handleStartRecording} className="primary-button">Start New Session</button>
                     <h2>Previous Sessions</h2>
                     {error && <p>Error loading sessions: {error.message}</p>}
+                    {deleteError && <p>Error deleting account: {deleteError.message}</p>}
                     {data && data.sessions && (
                         <ul>
                             {data.sessions.map((session: any) => (

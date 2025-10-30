@@ -36,7 +36,7 @@ async function deleteQueryBatch(query: FirebaseFirestore.Query, resolve: (value:
     });
     await batch.commit();
 
-    process.nextTick(() => {
+    setImmediate(() => {
         deleteQueryBatch(query, resolve);
     });
 }

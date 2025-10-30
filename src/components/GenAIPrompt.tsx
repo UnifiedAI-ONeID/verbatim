@@ -1,28 +1,21 @@
 
-import React, { useState } from 'react';
-import { gql } from '@apollo/client';
-import { useMutation } from '@apollo/client/react';
+import React, in { useState } from 'react';
+import { useGenerateSummaryMutation } from '../../dataconnect-generated/react/hooks';
 import '../style.css';
-
-const GENERATE_SUMMARY_MUTATION = gql`
-    mutation GenerateSummary($transcript: String!) {
-        generateSummary(transcript: $transcript)
-    }
-`;
 
 const GenAIPrompt = ({ session }) => {
     const [summary, setSummary] = useState('');
-    const [generateSummary, { loading, error }] = useMutation(GENERATE_SUMMARY_MUTATION);
+    const { mutate: generateSummary, isPending: loading, error } = useGenerateSummaryMutation();
 
     const generateText = async () => {
-        if (!session || !session.transcript) {
+        if (!session || !session.transcription) {
             alert('No transcript available to summarize.');
             return;
         }
 
         try {
-            const response = await generateSummary({ variables: { transcript: session.transcript } });
-            setSummary(response.data.generateSummary);
+            const response = await generateSummary({ transcript: session.transcription });
+            setSummary(response);
         } catch (e) {
             console.error('Error generating summary:', e);
             setSummary('Failed to generate summary.');
