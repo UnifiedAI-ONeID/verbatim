@@ -29,26 +29,28 @@ const SessionDetail = ({ sessionId, onBack }: { sessionId: string, onBack: () =>
 
     return (
         <div className="session-detail-container">
-            <button onClick={onBack} className="secondary-button">Back to Sessions</button>
+            <button onClick={onBack} className="secondary-button" style={{ marginBottom: '1rem' }}>Back to Sessions</button>
             <header>
-                <h2>Session on {new Date(session.createdAt).toLocaleString()}</h2>
-                <p>Status: {session.status}</p>
+                <h2>Session Details</h2>
+                <p><strong>ID:</strong> {session.id}</p>
+                <p><strong>Date:</strong> {new Date(session.createdAt).toLocaleString()}</p>
+                <p><strong>Status:</strong> <span className={`status-${session.status.toLowerCase()}`}>{session.status}</span></p>
             </header>
 
             {session.audioUrl && (
-                <div className="audio-player-container">
+                <section className="audio-player-container">
                     <h3>Session Recording</h3>
-                    <audio controls src={session.audioUrl}>
+                    <audio controls src={session.audioUrl} style={{ width: '100%' }}>
                         Your browser does not support the audio element.
                     </audio>
-                </div>
+                </section>
             )}
 
             {session.transcription && (
-                <div className="transcription-container">
+                <section className="transcription-container">
                     <h3>Transcription</h3>
                     <p className="transcription">{session.transcription}</p>
-                </div>
+                </section>
             )}
 
             <GenAIPrompt sessionId={sessionId} />

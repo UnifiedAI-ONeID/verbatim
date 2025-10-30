@@ -30,18 +30,21 @@ const GenAIPrompt = ({ session }) => {
     };
 
     return (
-        <div className="gen-ai-prompt-container">
-            <button onClick={generateText} disabled={loading}>
-                {loading ? 'Generating Summary...' : 'Summarize Transcript'}
-            </button>
-            {error && <p>Error: {error.message}</p>}
+        <section className="gen-ai-prompt-container">
+            <h3>Generative AI</h3>
+            <div className="prompt-controls">
+                <button onClick={generateText} disabled={loading} className="primary-button">
+                    {loading ? 'Generating Summary...' : 'Summarize Transcript'}
+                </button>
+            </div>
+            {error && <p className="error-message">Error: {error.message}</p>}
             {summary && (
-                <div>
-                    <h3>Summary:</h3>
+                <div className="summary-output">
+                    <h4>Summary:</h4>
                     <p>{summary}</p>
                 </div>
             )}
-        </div>
+        </section>
     );
 };
 
