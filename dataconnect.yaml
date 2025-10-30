@@ -1,0 +1,4 @@
+schema: schema.gql
+connector: firebase
+connector_config:
+  project: verbatim-1b5f7

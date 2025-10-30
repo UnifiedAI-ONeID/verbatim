@@ -1,13 +1,25 @@
+schema:
+  source: schema.gql
+location: us-central1
 
-# The version of the dataconnect.yaml schema.
-schemaVersion: 1
+connector:
+  - id: firebase
+    type: firebase
 
-# The ID of the connector, and the name of the generated SDK.
-connectorId: "verbatim"
+authorization:
+  # Who can perform what actions on the schema.
+  # This is a set of rules evaluated in order.
+  # The first rule that matches a request determines the result.
+  # If no rules match, the request is denied.
+  rules:
+    # - claim: # Check for a claim in the Firebase Auth token.
+    #     # For example, to check for a custom claim:
+    #     # has: permissions.posts.read
+    #     has: email # Grant access if the user has an email claim.
+    - role: EndUser
+      actions: [read, write, delete, execute]
+      # operations: # The operations that this rule applies to.
+      #   - users.get # Format: {SchemaType.operation}
 
-# The data source for this connector.
-# All generated queries and mutations will be for this data source.
-dataSource: "projects/${projectId}/databases/(default)"
 
-# The location of the service. This MUST match the location of your Firestore database.
-location: "us-west2"
+# generated-by: firebase-cli

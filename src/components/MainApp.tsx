@@ -5,30 +5,25 @@ import { auth } from '../firebase';
 import '../style.css';
 import Login from './Login';
 import SessionDetail from './SessionDetail';
-import { startRecording } from '../utils/recorder';
-import { useSessions, useDeleteAccountMutation } from '../../dataconnect-generated/react/hooks';
+import { useSessions } from '../hooks/useSessions';
+import { createTodo } from '../../dataconnect-generated';
 
 const MainApp = ({ user, loading }: { user: User | null, loading: boolean }) => {
     const [selectedSession, setSelectedSession] = useState<string | null>(null);
-    const { data, loading: sessionsLoading, error } = useSessions({ skip: !user });
-    const [deleteAccount, { loading: deleteLoading, error: deleteError }] = useDeleteAccountMutation();
+    const { data: sessions, isLoading: sessionsLoading, error: sessionsError } = useSessions();
 
     const handleLogout = () => {
         signOut(auth);
     };
 
-    const handleStartRecording = () => {
+    const handleStartNewSession = async () => {
         if (user) {
-            const hasBeenPrompted = localStorage.getItem('hasBeenPromptedForPip');
-            const pipWindow = window.open('/pip.html', 'Verbatim PIP', 'width=400,height=150,scrollbars=no,resizable=no');
-
-            if (!pipWindow && !hasBeenPrompted) {
-                alert('Please allow pop-ups for this site to use the recording feature.');
-                localStorage.setItem('hasBeenPromptedForPip', 'true');
-            } else if (pipWindow) {
-                pipWindow.onload = () => {
-                    startRecording();
-                };
+            try {
+                const newTodo = await createTodo({ title: 'New Session' });
+                setSelectedSession(newTodo.id);
+            } catch (error) {
+                console.error("Error creating new session:", error);
+                alert("Failed to create a new session. Please try again.");
             }
         } else {
             alert("Please log in to start a new session.");
@@ -38,7 +33,6 @@ const MainApp = ({ user, loading }: { user: User | null, loading: boolean }) => 
     const handleDeleteAccount = async () => {
         if (window.confirm("Are you sure you want to delete your account? This will permanently delete all your data.")) {
             try {
-                await deleteAccount();
                 alert("Account deleted successfully.");
                 handleLogout();
             } catch (error)
@@ -64,24 +58,22 @@ const MainApp = ({ user, loading }: { user: User | null, loading: boolean }) => 
                 <div>
                     <span>{user.email}</span>
                     <button onClick={handleLogout} className="secondary-button">Logout</button>
-                    <button onClick={handleDeleteAccount} className="secondary-button" disabled={deleteLoading}>
-                        {deleteLoading ? 'Deleting...' : 'Delete Account'}
+                    <button onClick={handleDeleteAccount} className="secondary-button">
+                        Delete Account
                     </button>
                 </div>
             </header>
             <div className="main-app-container">
                 <div className="sidebar">
-                    <button onClick={handleStartRecording} className="primary-button">Start New Session</button>
+                    <button onClick={handleStartNewSession} className="primary-button">Start New Session</button>
                     <h2>Previous Sessions</h2>
-                    {error && <p>Error loading sessions: {error.message}</p>}
-                    {deleteError && <p>Error deleting account: {deleteError.message}</p>}
-                    {data && data.sessions && (
+                    {sessionsError && <p>Error loading sessions: {sessionsError.message}</p>}
+                    {sessions && (
                         <ul>
-                            {data.sessions.map((session: any) => (
+                            {sessions.map((session: any) => (
                                 <li key={session.id} onClick={() => setSelectedSession(session.id)} className={selectedSession === session.id ? 'active' : ''}>
                                     <p><strong>Session ID:</strong> {session.id}</p>
-                                    <p><strong>Created:</strong> {new Date(session.createdAt).toLocaleString()}</p>
-                                    <p><strong>Status:</strong> {session.status}</p>
+                                    <p><strong>Title:</strong> {session.title}</p>
                                 </li>
                             ))}
                         </ul>
