@@ -9,7 +9,7 @@
     "preview": "vite preview"
   },
   "dependencies": {
-    "@apollo/client": "^4.0.8",
+    "@apollo/client": "^3.7.17",
     "@dataconnect/generated": "file:src/dataconnect-generated",
     "@google/genai": "^1.28.0",
     "firebase": "^12.4.0",
