@@ -1,5 +1,4 @@
 
-
 const CACHE_NAME = 'verbatim-v16';
 const urlsToCache = [
   '/',
@@ -107,3 +106,44 @@ self.addEventListener('activate', event => {
     })
   );
 });
+
+self.addEventListener('push', event => {
+  const data = event.data.json();
+  const options = {
+    body: data.body,
+    icon: '/icons/icon-192x192.png',
+    badge: '/icons/badge.png'
+  };
+  event.waitUntil(
+    self.registration.showNotification(data.title, options)
+  );
+});
+
+self.addEventListener('notificationclick', event => {
+  event.notification.close();
+  event.waitUntil(
+    clients.openWindow('/')
+  );
+});
+
+self.addEventListener('sync', event => {
+  if (event.tag === 'sync-data') {
+    event.waitUntil(syncData());
+  }
+});
+
+async function syncData() {
+  // Add your data synchronization logic here
+  console.log('Syncing data...');
+}
+
+self.addEventListener('periodicsync', event => {
+  if (event.tag === 'get-latest-news') {
+    event.waitUntil(getLatestNews());
+  }
+});
+
+async function getLatestNews() {
+  // Add your periodic data fetching logic here
+  console.log('Fetching latest news...');
+}

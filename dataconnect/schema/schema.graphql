@@ -1,5 +1,5 @@
 type Query {
-  sessions: [Session]
+  sessions: [Session]!
   session(id: ID!): Session
 }
 

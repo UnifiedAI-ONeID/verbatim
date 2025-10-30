@@ -73,7 +73,7 @@ const MainApp = ({ user, loading }: { user: User | null, loading: boolean }) => 
                     <button onClick={handleStartRecording} className="primary-button">Start New Session</button>
                     <h2>Previous Sessions</h2>
                     {error && <p>Error loading sessions: {error.message}</p>}
-                    {data && (
+                    {data && data.sessions && (
                         <ul>
                             {data.sessions.map((session: any) => (
                                 <li key={session.id} onClick={() => setSelectedSession(session.id)} className={selectedSession === session.id ? 'active' : ''}>
