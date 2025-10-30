@@ -132,3 +132,82 @@ export const takeAction = onCall({ secrets: ["GEMINI_API_KEY"] }, async (request
         throw new HttpsError("internal", "Failed to determine action.", error);
     }
 });
+
+/**
+ * Callable function to list all sessions for a user.
+ */
+export const listSessions = onCall(async (request) => {
+    if (!request.auth) {
+        throw new HttpsError("unauthenticated", "The function must be called while authenticated.");
+    }
+    const uid = request.auth.uid;
+    try {
+        const sessionsSnapshot = await db.collection(`users/${uid}/sessions`).get();
+        const sessions = sessionsSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+        return { sessions };
+    } catch (error) {
+        console.error("Error listing sessions for user " + uid, error);
+        throw new HttpsError("internal", "Unable to list sessions.");
+    }
+});
+
+/**
+ * Callable function to delete a specific session.
+ */
+export const deleteSession = onCall(async (request) => {
+    if (!request.auth) {
+        throw new HttpsError("unauthenticated", "The function must be called while authenticated.");
+    }
+
+    const { sessionId } = request.data;
+    if (!sessionId) {
+        throw new HttpsError("invalid-argument", "The function must be called with a 'sessionId' argument.");
+    }
+
+    const uid = request.auth.uid;
+    const sessionRef = db.doc(`users/${uid}/sessions/${sessionId}`);
+    const filePath = `recordings/${uid}/${sessionId}.webm`;
+    const bucket = storage.bucket();
+    const file = bucket.file(filePath);
+
+    try {
+        // Delete Firestore document
+        await sessionRef.delete();
+        // Delete audio file from Storage
+        await file.delete();
+        return { success: true, message: "Session and recording deleted successfully." };
+    } catch (error) {
+        console.error(`Error deleting session ${sessionId} for user ${uid}`, error);
+        throw new HttpsError("internal", "Unable to delete session.");
+    }
+});
+
+/**
+ * Callable function to delete a user's account and all their data.
+ */
+export const deleteAccount = onCall(async (request) => {
+    if (!request.auth) {
+        throw new HttpsError("unauthenticated", "The function must be called while authenticated.");
+    }
+    const uid = request.auth.uid;
+
+    try {
+        // Recursively delete all documents and subcollections under the user's document
+        await db.collection(`users`).doc(uid).delete();
+        
+        // Delete all of the user's recordings from Storage
+        const bucket = storage.bucket();
+        await bucket.deleteFiles({ prefix: `recordings/${uid}/` });
+
+        // Finally, delete the user from Firebase Authentication
+        await admin.auth().deleteUser(uid);
+        
+        return { success: true, message: "Account and all data deleted successfully." };
+
+    } catch (error: any) {
+        console.error("Error deleting account for user " + uid, error);
+        // It's possible the user has already been deleted or other issues,
+        // so we provide a generic error message.
+        throw new HttpsError("internal", "An error occurred while deleting the account.", error);
+    }
+});

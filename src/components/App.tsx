@@ -5,7 +5,6 @@ import { ApolloClient, InMemoryCache, createHttpLink } from '@apollo/client';
 import { ApolloProvider } from '@apollo/client/react';
 import { setContext } from '@apollo/client/link/context';
 import { auth } from '../firebase';
-import Login from './Login';
 const MainApp = lazy(() => import('./MainApp'));
 
 
@@ -44,19 +43,11 @@ const App = () => {
         return () => unsubscribe();
     }, []);
 
-    if (loading) {
-        return <p>Loading...</p>; // Or a loading spinner
-    }
-
     return (
         <ApolloProvider client={client}>
-            {user ? (
-                <Suspense fallback={<p>Loading...</p>}>
-                    <MainApp user={user} />
-                </Suspense>
-            ) : (
-                <Login />
-            )}
+            <Suspense fallback={<div className="loading-indicator"></div>}>
+                <MainApp user={user} loading={loading} />
+            </Suspense>
         </ApolloProvider>
     );
 };
