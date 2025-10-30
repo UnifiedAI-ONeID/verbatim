@@ -7,13 +7,13 @@ import Login from './Login';
 import SessionDetail from './SessionDetail';
 import { httpsCallable } from 'firebase/functions';
 import { startRecording } from '../utils/recorder';
-import { useListSessions } from '../dataconnect-generated/react';
+import { useSessions } from '../../dataconnect-generated/react/hooks';
 
 const deleteAccount = httpsCallable(functions, 'deleteAccount');
 
 const MainApp = ({ user, loading }: { user: User | null, loading: boolean }) => {
     const [selectedSession, setSelectedSession] = useState<string | null>(null);
-    const { data, loading: sessionsLoading, error } = useListSessions({ skip: !user });
+    const { data, loading: sessionsLoading, error } = useSessions({ skip: !user });
 
     const handleLogout = () => {
         signOut(auth);

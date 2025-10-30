@@ -4,3 +4,6 @@ schema:
   path: schema
 service:
   path: src
+sdk:
+  typescript:
+    outputDir: ../dataconnect-generated

@@ -1,6 +1,6 @@
 
 import React from 'react';
-import { useSession } from '../dataconnect-generated/react';
+import { useSession } from '../../dataconnect-generated/react/hooks';
 import GenAIPrompt from './GenAIPrompt';
 import '../style.css';
 
