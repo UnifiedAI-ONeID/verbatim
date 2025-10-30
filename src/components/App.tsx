@@ -1,12 +1,13 @@
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, Suspense, lazy } from 'react';
 import { onAuthStateChanged, User } from 'firebase/auth';
 import { ApolloClient, InMemoryCache, createHttpLink } from '@apollo/client';
 import { ApolloProvider } from '@apollo/client/react';
 import { setContext } from '@apollo/client/link/context';
 import { auth } from '../firebase';
 import Login from './Login';
-import MainApp from './MainApp';
+const MainApp = lazy(() => import('./MainApp'));
+
 
 const httpLink = createHttpLink({
     uri: `https://dataconnect.googleapis.com/v1alpha/projects/verbatim-pa-50946397-928b2/locations/us-west4/connectors/verbatim-genai`
@@ -49,7 +50,13 @@ const App = () => {
 
     return (
         <ApolloProvider client={client}>
-            {user ? <MainApp user={user} /> : <Login />}
+            {user ? (
+                <Suspense fallback={<p>Loading...</p>}>
+                    <MainApp user={user} />
+                </Suspense>
+            ) : (
+                <Login />
+            )}
         </ApolloProvider>
     );
 };

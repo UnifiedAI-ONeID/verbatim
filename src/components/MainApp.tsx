@@ -1,10 +1,11 @@
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, Suspense, lazy } from 'react';
 import { User, signOut } from 'firebase/auth';
 import { auth, db } from '../firebase';
 import { collection, query, where, orderBy, onSnapshot, DocumentData } from 'firebase/firestore';
-import SessionDetail from './SessionDetail';
 import '../style.css';
+
+const SessionDetail = lazy(() => import('./SessionDetail'));
 
 const MainApp = ({ user }: { user: User }) => {
     const [sessions, setSessions] = useState<DocumentData[]>([]);
@@ -30,14 +31,21 @@ const MainApp = ({ user }: { user: User }) => {
     }, [user]);
 
     const handleStartRecording = () => {
+        const hasBeenPrompted = localStorage.getItem('hasBeenPromptedForPip');
         const pipWindow = window.open('/pip.html', 'Verbatim PIP', 'width=400,height=200');
-        if (!pipWindow) {
+
+        if (!pipWindow && !hasBeenPrompted) {
             alert('Please allow pop-ups for this site to use the recording feature.');
+            localStorage.setItem('hasBeenPromptedForPip', 'true');
         }
     };
 
     if (selectedSession) {
-        return <SessionDetail sessionId={selectedSession} onBack={() => setSelectedSession(null)} />;
+        return (
+            <Suspense fallback={<p>Loading session...</p>}>
+                <SessionDetail sessionId={selectedSession} onBack={() => setSelectedSession(null)} />
+            </Suspense>
+        );
     }
 
     return (
