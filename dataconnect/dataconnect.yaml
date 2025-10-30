@@ -1,13 +1,6 @@
-specVersion: "v1"
-serviceId: "verbatim"
-location: "us-west4"
+connectorId: verbatim-genai
+location: us-central1
 schema:
-  source: "./schema"
-  datasource:
-    postgresql:
-      database: "fdcdb"
-      cloudSql:
-        instanceId: "verbatim-fdc"
-        # schemaValidation: "STRICT"     # STRICT mode makes Postgres schema match Data Connect exactly.
-        # schemaValidation: "COMPATIBLE" # COMPATIBLE mode makes Postgres schema compatible with Data Connect.
-connectorDirs: ["./example"]
+  path: schema
+service:
+  path: src

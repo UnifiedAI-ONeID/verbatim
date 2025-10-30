@@ -1,6 +1,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { createRoot } from 'react-dom/client';
+import './style.css';
 
 const channel = new BroadcastChannel('verbatim_pip_channel');
 
@@ -33,72 +34,14 @@ const PipApp = () => {
         channel.postMessage({ type: 'stop_recording' });
     };
 
-    const styles: { [key: string]: React.CSSProperties } = {
-        container: {
-            backgroundColor: '#1E1E1E',
-            color: 'white',
-            fontFamily: "'Poppins', sans-serif",
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'space-between',
-            width: '100%',
-            height: '100%',
-            boxSizing: 'border-box',
-            padding: '12px 16px',
-            borderRadius: '12px',
-        },
-        statusContainer: {
-            display: 'flex',
-            alignItems: 'center',
-            gap: '8px',
-            width: '12px',
-        },
-        recordingIndicator: {
-            width: '12px',
-            height: '12px',
-            borderRadius: '50%',
-            backgroundColor: '#dc3545',
-            animation: 'pulse 2s infinite',
-        },
-        notRecordingIndicator: {
-            width: '12px',
-            height: '12px',
-            borderRadius: '50%',
-            backgroundColor: '#6c757d',
-        },
-        timer: {
-            fontSize: '1.5rem',
-            fontWeight: 600,
-            fontFamily: 'monospace',
-            flexGrow: 1,
-            textAlign: 'center',
-        },
-        stopButton: {
-            backgroundColor: '#dc3545',
-            color: 'white',
-            border: 'none',
-            borderRadius: '8px',
-            padding: '8px 16px',
-            fontSize: '1rem',
-            fontWeight: 600,
-            cursor: 'pointer',
-            opacity: 1,
-            transition: 'opacity 0.2s',
-        },
-        stopButtonDisabled: {
-            opacity: 0.5,
-            cursor: 'not-allowed',
-        }
-    };
-
     return (
-        <div style={styles.container}>
-            <div style={styles.statusContainer}>
-                {isRecording ? <div style={styles.recordingIndicator}></div> : <div style={styles.notRecordingIndicator}></div>}
+        <div className="pip-container">
+            <div className="status-container">
+                {isRecording ? <div className="recording-indicator"></div> : <div className="not-recording-indicator"></div>}
             </div>
-            <div style={styles.timer}>{formatTime(time)}</div>
+            <div className="timer">{formatTime(time)}</div>
             <button 
-                style={{...styles.stopButton, ...(!isRecording ? styles.stopButtonDisabled : {})}} 
+                className="stop-button"
                 onClick={handleStop} 
                 disabled={!isRecording}
             >
@@ -107,25 +50,6 @@ const PipApp = () => {
         </div>
     );
 };
-
-const style = document.createElement('style');
-style.textContent = `
-    @import url('https://fonts.googleapis.com/css2?family=Poppins:wght@400;600;700&display=swap');
-    
-    @keyframes pulse {
-        0% { box-shadow: 0 0 0 0 rgba(220, 53, 69, 0.7); }
-        70% { box-shadow: 0 0 0 8px rgba(220, 53, 69, 0); }
-        100% { box-shadow: 0 0 0 0 rgba(220, 53, 69, 0); }
-    }
-
-    body {
-        margin: 0;
-        overflow: hidden;
-        border-radius: 12px;
-    }
-`;
-document.head.appendChild(style);
-
 
 const root = createRoot(document.getElementById('root') as HTMLElement);
 root.render(<PipApp />);

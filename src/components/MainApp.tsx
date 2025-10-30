@@ -4,6 +4,7 @@ import { User, signOut } from 'firebase/auth';
 import { auth, db } from '../firebase';
 import { collection, query, where, orderBy, onSnapshot, DocumentData } from 'firebase/firestore';
 import SessionDetail from './SessionDetail';
+import '../style.css';
 
 const MainApp = ({ user }: { user: User }) => {
     const [sessions, setSessions] = useState<DocumentData[]>([]);
@@ -40,7 +41,7 @@ const MainApp = ({ user }: { user: User }) => {
     }
 
     return (
-        <div>
+        <div className="main-app-container">
             <header>
                 <h1>Verbatim</h1>
                 <div>
@@ -53,7 +54,7 @@ const MainApp = ({ user }: { user: User }) => {
                 <h2>Previous Sessions</h2>
                 <ul>
                     {sessions.map(session => (
-                        <li key={session.id} onClick={() => setSelectedSession(session.id)} style={{ cursor: 'pointer' }}>
+                        <li key={session.id} onClick={() => setSelectedSession(session.id)}>
                             <p>Session ID: {session.id}</p>
                             <p>Status: {session.status}</p>
                         </li>

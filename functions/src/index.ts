@@ -10,12 +10,7 @@ const db = admin.firestore();
 const storage = admin.storage();
 
 // Get Gemini API Key from environment variables
-let geminiApiKey: string | undefined;
-try {
-    geminiApiKey = process.env.GEMINI_API_KEY;
-} catch (error) {
-    console.error("Could not retrieve Gemini API key.");
-}
+const geminiApiKey = process.env.GEMINI_API_KEY;
 
 if (!geminiApiKey) {
     console.error("Gemini API key is not set.");
@@ -26,7 +21,11 @@ const genAI = new GoogleGenerativeAI(geminiApiKey as string);
 /**
  * Callable function to analyze audio from a session.
  */
-export const analyzeAudio = onCall({ timeoutSeconds: 540, memory: '1GiB' }, async (request) => {
+export const analyzeAudio = onCall({ 
+    timeoutSeconds: 540, 
+    memory: '1GiB',
+    secrets: ["GEMINI_API_KEY"],
+}, async (request) => {
     if (!request.auth) {
         throw new HttpsError("unauthenticated", "The function must be called while authenticated.");
     }
@@ -100,7 +99,7 @@ export const analyzeAudio = onCall({ timeoutSeconds: 540, memory: '1GiB' }, asyn
 /**
  * Callable function to determine the next action based on context.
  */
-export const takeAction = onCall(async (request) => {
+export const takeAction = onCall({ secrets: ["GEMINI_API_KEY"] }, async (request) => {
     if (!request.auth) {
         throw new HttpsError("unauthenticated", "The function must be called while authenticated.");
     }

@@ -1,0 +1,24 @@
+type Query {
+  noop: String
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+type Mutation {
+  generateSummary(transcript: String!): String
+}

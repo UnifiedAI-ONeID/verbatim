@@ -1,4 +1,3 @@
-
 {
   "hosting": {
     "site": "verbatim-pa-50946397-928b2",
@@ -63,5 +62,8 @@
   },
   "storage": {
     "rules": "storage.rules"
+  },
+  "dataconnect": {
+    "source": "dataconnect"
   }
 }
