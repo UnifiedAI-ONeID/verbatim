@@ -11,14 +11,9 @@
   "dependencies": {
     "react": "^19.2.0",
     "react-dom": "^19.2.0",
-    "@google/genai": "^1.26.0",
-    "marked": "^13.0.0",
-    "firebase": "^12.4.0",
-    "@firebase/auth": "^1.11.0",
-    "@firebase/app": "^0.14.4",
-    "@firebase/firestore": "^4.9.2",
-    "@firebase/storage": "^0.14.0",
-    "@firebase/functions": "^0.13.1"
+    "@google/genai": "^1.28.0",
+    "firebase": "^12.5.0",
+    "marked": "^16.4.1"
   },
   "devDependencies": {
     "@types/node": "^22.14.0",
