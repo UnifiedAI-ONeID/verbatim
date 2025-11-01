@@ -31,6 +31,8 @@ exports.analyzeAudio = functions.runWith({timeoutSeconds: 540, memory: '1GB'}).h
       "Session ID is required."
     );
   }
+  
+  functions.logger.info(`[${sessionId}] Function triggered for user: ${userId}.`);
 
   const firestore = getFirestore();
   const storage = getStorage();
@@ -54,11 +56,13 @@ exports.analyzeAudio = functions.runWith({timeoutSeconds: 540, memory: '1GB'}).h
     }
       
     const [audioBytes] = await file.download();
+    functions.logger.info(`[${sessionId}] Audio file downloaded from Storage.`);
     const base64Audio = audioBytes.toString("base64");
 
     const audioPart = { inlineData: { mimeType: "audio/webm", data: base64Audio } };
     const textPart = { text: prompt || defaultAnalysisPrompt };
-
+    
+    functions.logger.info(`[${sessionId}] Calling Gemini API for analysis...`);
     const response = await ai.models.generateContent({
         model: "gemini-2.5-flash",
         contents: [{ parts: [audioPart, textPart] }],
@@ -66,6 +70,7 @@ exports.analyzeAudio = functions.runWith({timeoutSeconds: 540, memory: '1GB'}).h
           responseMimeType: 'application/json'
         }
     });
+    functions.logger.info(`[${sessionId}] Received response from Gemini API.`);
     
     let jsonString = response.text;
     
@@ -77,6 +82,7 @@ exports.analyzeAudio = functions.runWith({timeoutSeconds: 540, memory: '1GB'}).h
     }
 
     const parsedResult = JSON.parse(jsonString);
+    functions.logger.info(`[${sessionId}] Successfully parsed Gemini response.`);
 
     const results = {
       summary: parsedResult.summary || "No summary generated.",
@@ -89,15 +95,18 @@ exports.analyzeAudio = functions.runWith({timeoutSeconds: 540, memory: '1GB'}).h
         (acc, speaker) => ({...acc, [speaker]: speaker}), {}
     );
 
+    functions.logger.info(`[${sessionId}] Updating Firestore document with results.`);
     await sessionDocRef.update({
       results,
       speakers,
       status: "completed",
     });
+    functions.logger.info(`[${sessionId}] Firestore updated successfully.`);
+
 
     return { success: true, sessionId };
   } catch (error) {
-    console.error(`Error in analyzeAudio for session ${sessionId}, user ${userId}:`, error);
+    functions.logger.error(`Error in analyzeAudio for session ${sessionId}, user ${userId}:`, error);
     await sessionDocRef.update({
       status: "error",
       error: "Failed to analyze audio on the server.",

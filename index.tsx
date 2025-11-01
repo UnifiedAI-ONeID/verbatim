@@ -414,6 +414,7 @@ enableIndexedDbPersistence(db)
 const storage = getStorage(firebaseApp);
 const functions = getFunctions(firebaseApp);
 const ai = new GoogleGenAI({ apiKey: process.env.API_KEY as string });
+console.log("Firebase services initialized.");
 
 // --- Gemini Function Calling Tool Definitions ---
 const tools: FunctionDeclaration[] = [
@@ -543,18 +544,20 @@ const App = () => {
         const provider = new GoogleAuthProvider();
         try {
             const result = await signInWithPopup(auth, provider);
+            console.log("Sign-in successful for user:", result.user.displayName);
             return result.user;
         } catch (error: any) {
             console.error("Authentication error:", error.code, error.message);
             switch (error.code) {
                 case 'auth/popup-closed-by-user':
                 case 'auth/cancelled-popup-request':
+                    // User intentionally closed the popup, so no error message is needed.
                     break;
                 case 'auth/popup-blocked':
                     setError(t.signInPopupBlockedError);
                     break;
                 default:
-                    setError(t.signInError);
+                    setError(`${t.signInError} (${error.code})`);
                     break;
             }
             return null;
@@ -575,14 +578,32 @@ const App = () => {
     }, []);
 
     useEffect(() => {
-        const unsub = onAuthStateChanged(auth, u => { setUser(u); setIsLoading(false); });
+        const unsub = onAuthStateChanged(auth, u => {
+            if (u) {
+                console.log(`Auth state changed: User signed in as ${u.displayName} (${u.uid})`);
+            } else {
+                console.log("Auth state changed: User signed out.");
+            }
+            setUser(u);
+            setIsLoading(false);
+        });
         return () => unsub();
     }, []);
 
     useEffect(() => {
         if (!user) { setSessions([]); return; }
         const q = query(collection(db, 'users', user.uid, 'sessions'), orderBy('metadata.date', 'desc'));
-        const unsub = onSnapshot(q, snap => setSessions(snap.docs.map(d => ({ id: d.id, ...d.data() } as Session))));
+        const unsub = onSnapshot(q,
+            (snap) => {
+                const sessionData = snap.docs.map(d => ({ id: d.id, ...d.data() } as Session));
+                console.log(`Firestore listener: Received ${sessionData.length} sessions for user ${user.uid}.`);
+                setSessions(sessionData);
+            },
+            (error) => {
+                console.error("Firestore listener error:", error);
+                setError("Could not load sessions due to a database error.");
+            }
+        );
         return () => unsub();
     }, [user]);
 
@@ -686,6 +707,7 @@ const App = () => {
     
             const preliminarySession: Omit<Session, 'id' | 'results' | 'speakers'> = { metadata: { title: `Meeting - ${new Date().toLocaleString()}`, date: new Date().toISOString(), location: locationName, mapUrl }, status: 'processing' };
             await setDoc(sessionDocRef, preliminarySession);
+            console.log(`Firestore: Created preliminary session document ${newSessionId}`);
             const newSessionData = { ...preliminarySession, id: newSessionId, results: { transcript: '', summary: '', actionItems: [] }, speakers: {} };
             setSelectedSession(newSessionData);
             setActiveTab('sessions');
@@ -702,17 +724,25 @@ const App = () => {
     
                 if (audioBlob.size < 2000) {
                     setError(t.recordingTooShortError);
+                    console.log(`Firestore: Deleting session ${newSessionId} due to short recording.`);
                     await deleteDoc(sessionDocRef);
                 } else if (!navigator.onLine) {
                     setError(t.offlineError);
+                    console.log(`Firestore: Marking session ${newSessionId} as error due to offline status.`);
                     await updateDoc(sessionDocRef, { status: 'error', error: t.offlineError });
                 } else {
                     try {
                         const storageRef = ref(storage, `recordings/${currentUser.uid}/${newSessionId}.webm`);
+                        console.log(`Storage: Uploading recording for session ${newSessionId}...`);
                         await uploadBytes(storageRef, audioBlob);
+                        console.log(`Storage: Upload successful for session ${newSessionId}.`);
+                        
                         const analyzeAudio = httpsCallable(functions, 'analyzeAudio');
+                        console.log(`Functions: Calling analyzeAudio for session ${newSessionId}...`);
                         await analyzeAudio({ sessionId: newSessionId, prompt: t.analysisPrompt });
+                        console.log("Functions: analyzeAudio call successful.");
                     } catch (e) {
+                        console.error("Functions: analyzeAudio call failed.", e);
                         setError(t.processingError);
                         await updateDoc(sessionDocRef, { status: 'error', error: t.processingError });
                     }
@@ -753,19 +783,29 @@ const App = () => {
     
     const handleDeleteSession = async (sessionId: string) => {
         if (!user || !window.confirm(t.deleteConfirmation)) return;
+        console.log(`Attempting to delete session ${sessionId}...`);
         try {
             await deleteDoc(doc(db, 'users', user.uid, 'sessions', sessionId));
+            console.log(`Firestore: Deleted document for session ${sessionId}.`);
             await deleteObject(ref(storage, `recordings/${user.uid}/${sessionId}.webm`));
+            console.log(`Storage: Deleted file for session ${sessionId}.`);
             setSelectedSession(null);
-        } catch (error) { setError("Failed to delete session."); }
+        } catch (error) {
+            console.error(`Failed to delete session ${sessionId}:`, error);
+            setError("Failed to delete session.");
+        }
     };
 
     const handleUpdateSpeakerName = async (sessionId: string, speakerId: string, newName: string) => {
         if (!user || !newName.trim()) return;
+        console.log(`Firestore: Updating speaker name for session ${sessionId}, speaker ${speakerId} to "${newName.trim()}"`);
         try {
             await updateDoc(doc(db, 'users', user.uid, 'sessions', sessionId), { [`speakers.${speakerId}`]: newName.trim() });
             setEditingSpeaker(null);
-        } catch (error) { setError("Failed to update speaker name."); }
+        } catch (error) {
+            console.error("Firestore: Failed to update speaker name.", error);
+            setError("Failed to update speaker name.");
+        }
     };
 
     const handleTakeAction = async (item: string, session: Session) => {
@@ -808,13 +848,21 @@ const App = () => {
 const Header = ({ user, onSignIn, onLogoClick }: { user: User | null; onSignIn: () => void; onLogoClick: () => void; }) => {
     const { t, lang, setLang } = useLocalization();
     const { theme, toggleTheme } = useTheme();
+    const handleSignOut = async () => {
+        try {
+            await firebaseSignOut(auth);
+            console.log("User signed out successfully.");
+        } catch (error) {
+            console.error("Error signing out:", error);
+        }
+    };
     return (
         <header style={styles.header}>
             <div style={styles.logo} onClick={onLogoClick} role="button" aria-label="Verbatim Logo"><svg width="32" height="32" viewBox="0 0 192 192" fill="none" xmlns="http://www.w3.org/2000/svg"><rect width="192" height="192" rx="48" fill="var(--bg-3)"/><path d="M48 95L78 125L114 89" stroke="var(--accent-primary)" strokeWidth="18" strokeLinecap="round" strokeLinejoin="round"/><path d="M128 89V125" stroke="var(--text-secondary)" strokeWidth="12" strokeLinecap="round"/><path d="M144 75V125" stroke="var(--text-secondary)" strokeWidth="12" strokeLinecap="round"/></svg><span style={{color: 'var(--accent-primary)'}}>{t.title}</span></div>
             <div style={styles.headerControls}>
                  <select value={lang} onChange={e => setLang(e.target.value as Language)} style={styles.headerSelect} aria-label={t.language}><option value="en">EN</option><option value="es">ES</option><option value="zh-CN">简体</option><option value="zh-TW">繁體</option></select>
                 <button onClick={toggleTheme} style={styles.themeToggleButton} aria-label={`${t.theme}: ${theme}`}>{theme === 'light' ? '🌙' : '☀️'}</button>
-                {user ? <button onClick={() => firebaseSignOut(auth)} style={styles.secondaryButton}>{t.signOut}</button> : <button onClick={onSignIn} style={styles.primaryButton}>{t.signIn}</button>}
+                {user ? <button onClick={handleSignOut} style={styles.secondaryButton}>{t.signOut}</button> : <button onClick={onSignIn} style={styles.primaryButton}>{t.signIn}</button>}
             </div>
         </header>
     );

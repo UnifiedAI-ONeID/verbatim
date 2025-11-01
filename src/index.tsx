@@ -414,6 +414,7 @@ enableIndexedDbPersistence(db)
 const storage = getStorage(firebaseApp);
 const functions = getFunctions(firebaseApp);
 const ai = new GoogleGenAI({ apiKey: process.env.API_KEY as string });
+console.log("Firebase services initialized.");
 
 // --- Gemini Function Calling Tool Definitions ---
 const tools: FunctionDeclaration[] = [
@@ -543,18 +544,20 @@ const App = () => {
         const provider = new GoogleAuthProvider();
         try {
             const result = await signInWithPopup(auth, provider);
+            console.log("Sign-in successful for user:", result.user.displayName);
             return result.user;
         } catch (error: any) {
             console.error("Authentication error:", error.code, error.message);
             switch (error.code) {
                 case 'auth/popup-closed-by-user':
                 case 'auth/cancelled-popup-request':
+                    // User intentionally closed the popup, so no error message is needed.
                     break;
                 case 'auth/popup-blocked':
                     setError(t.signInPopupBlockedError);
                     break;
                 default:
-                    setError(t.signInError);
+                    setError(`${t.signInError} (${error.code})`);
                     break;
             }
             return null;
@@ -575,14 +578,32 @@ const App = () => {
     }, []);
 
     useEffect(() => {
-        const unsub = onAuthStateChanged(auth, u => { setUser(u); setIsLoading(false); });
+        const unsub = onAuthStateChanged(auth, u => {
+            if (u) {
+                console.log(`Auth state changed: User signed in as ${u.displayName} (${u.uid})`);
+            } else {
+                console.log("Auth state changed: User signed out.");
+            }
+            setUser(u);
+            setIsLoading(false);
+        });
         return () => unsub();
     }, []);
 
     useEffect(() => {
         if (!user) { setSessions([]); return; }
         const q = query(collection(db, 'users', user.uid, 'sessions'), orderBy('metadata.date', 'desc'));
-        const unsub = onSnapshot(q, snap => setSessions(snap.docs.map(d => ({ id: d.id, ...d.data() } as Session))));
+        const unsub = onSnapshot(q,
+            (snap) => {
+                const sessionData = snap.docs.map(d => ({ id: d.id, ...d.data() } as Session));
+                console.log(`Firestore listener: Received ${sessionData.length} sessions for user ${user.uid}.`);
+                setSessions(sessionData);
+            },
+            (error) => {
+                console.error("Firestore listener error:", error);
+                setError("Could not load sessions due to a database error.");
+            }
+        );
         return () => unsub();
     }, [user]);
 
@@ -686,6 +707,7 @@ const App = () => {
     
             const preliminarySession: Omit<Session, 'id' | 'results' | 'speakers'> = { metadata: { title: `Meeting - ${new Date().toLocaleString()}`, date: new Date().toISOString(), location: locationName, mapUrl }, status: 'processing' };
             await setDoc(sessionDocRef, preliminarySession);
+            console.log(`Firestore: Created preliminary session document ${newSessionId}`);
             const newSessionData = { ...preliminarySession, id: newSessionId, results: { transcript: '', summary: '', actionItems: [] }, speakers: {} };
             setSelectedSession(newSessionData);
             setActiveTab('sessions');
@@ -702,17 +724,25 @@ const App = () => {
     
                 if (audioBlob.size < 2000) {
                     setError(t.recordingTooShortError);
+                    console.log(`Firestore: Deleting session ${newSessionId} due to short recording.`);
                     await deleteDoc(sessionDocRef);
                 } else if (!navigator.onLine) {
                     setError(t.offlineError);
+                    console.log(`Firestore: Marking session ${newSessionId} as error due to offline status.`);
                     await updateDoc(sessionDocRef, { status: 'error', error: t.offlineError });
                 } else {
                     try {
                         const storageRef = ref(storage, `recordings/${currentUser.uid}/${newSessionId}.webm`);
+                        console.log(`Storage: Uploading recording for session ${newSessionId}...`);
                         await uploadBytes(storageRef, audioBlob);
+                        console.log(`Storage: Upload successful for session ${newSessionId}.`);
+                        
                         const analyzeAudio = httpsCallable(functions, 'analyzeAudio');
+                        console.log(`Functions: Calling analyzeAudio for session ${newSessionId}...`);
                         await analyzeAudio({ sessionId: newSessionId, prompt: t.analysisPrompt });
+                        console.log("Functions: analyzeAudio call successful.");
                     } catch (e) {
+                        console.error("Functions: analyzeAudio call failed.", e);
                         setError(t.processingError);
                         await updateDoc(sessionDocRef, { status: 'error', error: t.processingError });
                     }
@@ -753,19 +783,29 @@ const App = () => {
     
     const handleDeleteSession = async (sessionId: string) => {
         if (!user || !window.confirm(t.deleteConfirmation)) return;
+        console.log(`Attempting to delete session ${sessionId}...`);
         try {
             await deleteDoc(doc(db, 'users', user.uid, 'sessions', sessionId));
+            console.log(`Firestore: Deleted document for session ${sessionId}.`);
             await deleteObject(ref(storage, `recordings/${user.uid}/${sessionId}.webm`));
+            console.log(`Storage: Deleted file for session ${sessionId}.`);
             setSelectedSession(null);
-        } catch (error) { setError("Failed to delete session."); }
+        } catch (error) {
+            console.error(`Failed to delete session ${sessionId}:`, error);
+            setError("Failed to delete session.");
+        }
     };
 
     const handleUpdateSpeakerName = async (sessionId: string, speakerId: string, newName: string) => {
         if (!user || !newName.trim()) return;
+        console.log(`Firestore: Updating speaker name for session ${sessionId}, speaker ${speakerId} to "${newName.trim()}"`);
         try {
             await updateDoc(doc(db, 'users', user.uid, 'sessions', sessionId), { [`speakers.${speakerId}`]: newName.trim() });
             setEditingSpeaker(null);
-        } catch (error) { setError("Failed to update speaker name."); }
+        } catch (error) {
+            console.error("Firestore: Failed to update speaker name.", error);
+            setError("Failed to update speaker name.");
+        }
     };
 
     const handleTakeAction = async (item: string, session: Session) => {
@@ -808,13 +848,21 @@ const App = () => {
 const Header = ({ user, onSignIn, onLogoClick }: { user: User | null; onSignIn: () => void; onLogoClick: () => void; }) => {
     const { t, lang, setLang } = useLocalization();
     const { theme, toggleTheme } = useTheme();
+    const handleSignOut = async () => {
+        try {
+            await firebaseSignOut(auth);
+            console.log("User signed out successfully.");
+        } catch (error) {
+            console.error("Error signing out:", error);
+        }
+    };
     return (
         <header style={styles.header}>
             <div style={styles.logo} onClick={onLogoClick} role="button" aria-label="Verbatim Logo"><svg width="32" height="32" viewBox="0 0 192 192" fill="none" xmlns="http://www.w3.org/2000/svg"><rect width="192" height="192" rx="48" fill="var(--bg-3)"/><path d="M48 95L78 125L114 89" stroke="var(--accent-primary)" strokeWidth="18" strokeLinecap="round" strokeLinejoin="round"/><path d="M128 89V125" stroke="var(--text-secondary)" strokeWidth="12" strokeLinecap="round"/><path d="M144 75V125" stroke="var(--text-secondary)" strokeWidth="12" strokeLinecap="round"/></svg><span style={{color: 'var(--accent-primary)'}}>{t.title}</span></div>
             <div style={styles.headerControls}>
                  <select value={lang} onChange={e => setLang(e.target.value as Language)} style={styles.headerSelect} aria-label={t.language}><option value="en">EN</option><option value="es">ES</option><option value="zh-CN">简体</option><option value="zh-TW">繁體</option></select>
                 <button onClick={toggleTheme} style={styles.themeToggleButton} aria-label={`${t.theme}: ${theme}`}>{theme === 'light' ? '🌙' : '☀️'}</button>
-                {user ? <button onClick={() => firebaseSignOut(auth)} style={styles.secondaryButton}>{t.signOut}</button> : <button onClick={onSignIn} style={styles.primaryButton}>{t.signIn}</button>}
+                {user ? <button onClick={handleSignOut} style={styles.secondaryButton}>{t.signOut}</button> : <button onClick={onSignIn} style={styles.primaryButton}>{t.signIn}</button>}
             </div>
         </header>
     );
@@ -1042,96 +1090,4 @@ const DedicationModal = ({ onClose }: { onClose: () => void }) => {
 
 // --- STYLES (using CSS variables) ---
 const styles: { [key: string]: CSSProperties } = {
-    appContainer: { display: 'flex', flexDirection: 'column', minHeight: '100dvh', backgroundColor: 'var(--bg)' },
-    mainContent: { flex: 1, overflowY: 'auto', paddingBottom: '70px', display: 'flex', flexDirection: 'column' },
-    loadingContainer: { display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh', color: 'var(--text-secondary)' },
-    header: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '12px 16px', borderBottom: '1px solid var(--border-color)', position: 'sticky', top: 0, backgroundColor: 'var(--bg)', zIndex: 100 },
-    headerControls: { display: 'flex', alignItems: 'center', gap: '10px' },
-    logo: { display: 'flex', alignItems: 'center', gap: '10px', fontSize: '1.5rem', fontWeight: 'bold', cursor: 'pointer' },
-    recordView: { flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'center', padding: '16px', boxSizing: 'border-box' },
-    recordButtonContainer: { display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', flexGrow: 1, textAlign: 'center' },
-    recordButton: { width: '150px', height: '150px', borderRadius: '50%', border: 'none', backgroundColor: 'var(--accent-primary)', color: 'var(--accent-primary-text)', fontSize: '4rem', cursor: 'pointer', display: 'flex', justifyContent: 'center', alignItems: 'center', transition: 'all 0.3s ease', boxShadow: '0 0 20px color-mix(in srgb, var(--accent-primary) 40%, transparent)' },
-    recordButtonRecording: { backgroundColor: 'var(--danger)', boxShadow: '0 0 25px color-mix(in srgb, var(--danger) 60%, transparent)', animation: 'pulse 1.5s infinite' },
-    recordButtonText: { marginTop: '20px', fontSize: '1.2rem', color: 'var(--text-secondary)' },
-    recordFooter: { display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '15px', width: '100%', paddingBottom: '10px' },
-    statusContainer: { minHeight: '24px', textAlign: 'center' },
-    errorText: { color: 'var(--danger)' },
-    primaryButton: { backgroundColor: 'var(--accent-secondary)', color: 'var(--accent-secondary-text)', border: 'none', padding: '10px 20px', borderRadius: '8px', fontSize: '1rem', fontWeight: 'bold', cursor: 'pointer' },
-    secondaryButton: { background: 'var(--bg-3)', border: '1px solid var(--border-color-2)', color: 'var(--text-primary)', padding: '8px 16px', borderRadius: '8px', cursor: 'pointer' },
-    themeToggleButton: { background: 'none', border: 'none', fontSize: '1.5rem', cursor: 'pointer', padding: '8px', color: 'var(--text-primary)' },
-    headerSelect: { backgroundColor: 'var(--bg-3)', color: 'var(--text-primary)', border: '1px solid var(--border-color)', borderRadius: '6px', padding: '8px' },
-    bottomNav: { display: 'flex', justifyContent: 'space-around', backgroundColor: 'var(--bg-2)', padding: '10px 0', borderTop: '1px solid var(--border-color)', position: 'fixed', bottom: 0, left: 0, right: 0, zIndex: 1000 },
-    navButton: { background: 'none', border: 'none', color: 'var(--text-tertiary)', fontSize: '1rem', padding: '10px 20px', cursor: 'pointer', flex: 1 },
-    navButtonActive: { color: 'var(--accent-primary)', fontWeight: 'bold' },
-    sessionsView: { padding: '20px' },
-    sessionsHeader: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' },
-    searchInput: { backgroundColor: 'var(--bg-3)', border: '1px solid var(--border-color)', color: 'var(--text-primary)', borderRadius: '8px', padding: '8px 12px' },
-    sessionsList: { listStyle: 'none', padding: 0, margin: 0 },
-    sessionItem: { backgroundColor: 'var(--bg-2)', padding: '15px', borderRadius: '8px', marginBottom: '10px', cursor: 'pointer', display: 'flex', justifyContent: 'space-between', alignItems: 'center' },
-    sessionItemInfo: { display: 'flex', flexDirection: 'column', gap: '4px' },
-    sessionItemTitle: { fontSize: '1.1rem' },
-    sessionItemDate: { fontSize: '0.9rem', color: 'var(--text-secondary)' },
-    sessionItemStatus: { display: 'flex', alignItems: 'center', gap: '10px', color: 'var(--text-tertiary)' },
-    processingChip: { backgroundColor: 'var(--bg-3)', color: 'var(--text-secondary)', padding: '4px 8px', borderRadius: '12px', fontSize: '0.8rem' },
-    errorChip: { backgroundColor: 'var(--danger-bg)', color: 'var(--danger-text)', padding: '4px 8px', borderRadius: '12px', fontSize: '0.8rem' },
-    welcomeContainer: { textAlign: 'center', padding: '50px 20px', color: 'var(--text-tertiary)' },
-    loginView: { flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', padding: '20px', textAlign: 'center' },
-    toggleSwitchLabel: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', cursor: 'pointer', fontSize: '1rem', width: '100%', maxWidth: '300px', padding: '12px', backgroundColor: 'var(--bg-2)', borderRadius: '8px', border: '1px solid var(--border-color)' },
-    toggleSwitch: { position: 'relative', display: 'inline-block', width: '50px', height: '28px' },
-    modalOverlay: { position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0, 0, 0, 0.7)', display: 'flex', justifyContent: 'center', alignItems: 'center', zIndex: 2000 },
-    modalContainer: { backgroundColor: 'var(--bg-2)', padding: '20px', borderRadius: '12px', width: '90%', maxWidth: '500px', boxShadow: '0 5px 15px rgba(0,0,0,0.5)' },
-    modalHeader: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid var(--border-color)', paddingBottom: '10px', marginBottom: '15px' },
-    modalCloseButton: { background: 'none', border: 'none', color: 'var(--text-secondary)', fontSize: '1.5rem', cursor: 'pointer' },
-    modalBody: {},
-    deviceList: { listStyle: 'none', padding: 0, margin: '10px 0 0' },
-    deviceItem: { padding: '12px', border: '1px solid var(--border-color)', borderRadius: '8px', marginBottom: '10px', cursor: 'pointer', textAlign: 'center', backgroundColor: 'var(--bg-3)', transition: 'background-color 0.2s' },
-    detailView: { padding: '20px' },
-    detailHeader: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px', flexWrap: 'wrap', gap: '10px' },
-    detailHeaderActions: { display: 'flex', alignItems: 'center', gap: '10px' },
-    exportMenu: { position: 'absolute', top: '100%', right: 0, backgroundColor: 'var(--bg-3)', borderRadius: '8px', border: '1px solid var(--border-color)', boxShadow: '0 4px 12px rgba(0,0,0,0.15)', zIndex: 10, marginTop: '5px', overflow: 'hidden', display: 'flex', flexDirection: 'column', width: 'max-content' },
-    exportMenuItem: { background: 'none', border: 'none', color: 'var(--text-primary)', padding: '10px 15px', textAlign: 'left', width: '100%', cursor: 'pointer', fontSize: '0.9rem' },
-    backButton: { background: 'none', border: 'none', color: 'var(--accent-primary)', fontSize: '1rem', cursor: 'pointer' },
-    deleteButton: { background: 'none', border: '1px solid var(--danger-border)', color: 'var(--danger)', padding: '6px 12px', borderRadius: '6px', cursor: 'pointer' },
-    detailMeta: { color: 'var(--text-secondary)', fontSize: '0.9rem', margin: '4px 0' },
-    contentBlock: { whiteSpace: 'pre-wrap', lineHeight: 1.6 },
-    actionItemsList: { listStyle: 'none', padding: 0 },
-    actionItem: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '10px 0', borderBottom: '1px solid var(--border-color)' },
-    takeActionButton: { background: 'var(--accent-primary)', color: 'var(--accent-primary-text)', border: 'none', borderRadius: '6px', padding: '6px 10px', fontSize: '0.8rem', fontWeight: 'bold', cursor: 'pointer', marginLeft: '10px' },
-    speakersList: { listStyle: 'none', padding: 0 },
-    speakerItem: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '5px 0' },
-    editSpeakerButton: { background: 'none', border: 'none', cursor: 'pointer', fontSize: '1rem' },
-    speakerInput: { backgroundColor: 'var(--bg-3)', color: 'var(--text-primary)', border: '1px solid var(--border-color-2)', borderRadius: '4px', padding: '4px 8px' },
-    transcriptContainer: { backgroundColor: 'var(--bg-2)', padding: '15px', borderRadius: '8px', maxHeight: '400px', overflowY: 'auto', whiteSpace: 'pre-wrap', lineHeight: 1.6 },
-    accordionContainer: { marginBottom: '10px', borderRadius: '8px', overflow: 'hidden', border: '1px solid var(--border-color)' },
-    accordionHeader: { backgroundColor: 'var(--bg-accent)', padding: '15px', cursor: 'pointer', border: 'none', width: '100%', textAlign: 'left', color: 'var(--text-primary)', fontSize: '1.1rem', fontWeight: 'bold', display: 'flex', justifyContent: 'space-between', alignItems: 'center' },
-    accordionContent: { padding: '15px', backgroundColor: 'var(--bg-2)' },
-    actionButton: { display: 'flex', alignItems: 'center', justifyContent: 'center', marginTop: '15px', padding: '10px 20px', backgroundColor: 'var(--bg-3)', color: 'var(--text-primary)', textDecoration: 'none', borderRadius: '8px', fontWeight: 'bold', border: '1px solid var(--border-color)' },
-    preformattedText: { whiteSpace: 'pre-wrap', backgroundColor: 'var(--bg-3)', padding: '10px', borderRadius: '6px', maxHeight: '150px', overflowY: 'auto' },
-    sourceItemText: { color: 'var(--text-secondary)', borderLeft: '3px solid var(--accent-primary)', paddingLeft: '10px', marginBottom: '15px' },
-    dedicationOverlay: { position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0, 0, 0, 0.5)', display: 'flex', justifyContent: 'center', alignItems: 'center', zIndex: 3000, overflow: 'hidden' },
-    confettiContainer: { position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', pointerEvents: 'none' },
-    dedicationModal: { padding: '30px', borderRadius: '12px', textAlign: 'center', color: 'white', textShadow: '0 2px 4px rgba(0,0,0,0.5)' },
-    dedicationText: { fontSize: '1.5rem', fontWeight: 'bold', margin: 0 },
-    calendarButtonsContainer: { display: 'flex', flexDirection: 'column', gap: '10px', marginTop: '15px' },
-    calendarIcon: { width: '20px', height: '20px', marginRight: '10px' },
-    configWarningOverlay: { position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.85)', display: 'flex', justifyContent: 'center', alignItems: 'center', zIndex: 9999, color: '#fff', textAlign: 'left', fontFamily: 'sans-serif' },
-    configWarningBox: { backgroundColor: '#2a2a2a', padding: '20px 40px', borderRadius: '12px', width: '90%', maxWidth: '600px', border: '1px solid var(--border-color)', fontFamily: "'Poppins', sans-serif" },
-};
-const styleSheet = document.createElement("style");
-styleSheet.innerText = `@keyframes pulse { 0% { transform: scale(0.95); box-shadow: 0 0 0 0 color-mix(in srgb, var(--danger) 70%, transparent); } 70% { transform: scale(1); box-shadow: 0 0 0 20px color-mix(in srgb, var(--danger) 0%, transparent); } 100% { transform: scale(0.95); box-shadow: 0 0 0 0 color-mix(in srgb, var(--danger) 0%, transparent); } } .slider { position: absolute; cursor: pointer; inset: 0; background-color: var(--bg-3); transition: .4s; border-radius: 28px; } .slider:before { position: absolute; content: ""; height: 20px; width: 20px; left: 4px; bottom: 4px; background-color: white; transition: .4s; border-radius: 50%; } input { opacity: 0; width: 0; height: 0; } input:checked + .slider { background-color: var(--accent-primary); } input:checked + .slider:before { transform: translateX(22px); }
-@keyframes confetti-fall { 0% { transform: translateY(-10vh) rotate(0deg); opacity: 1; } 100% { transform: translateY(110vh) rotate(720deg); opacity: 0; } }
-.confetti-piece { position: absolute; width: 10px; height: 20px; opacity: 0; animation: confetti-fall 6s linear forwards; }
-`;
-document.head.appendChild(styleSheet);
-
-
-const root = createRoot(document.getElementById('root') as HTMLElement);
-root.render(
-    <React.StrictMode>
-        <ThemeProvider>
-            <LanguageProvider>
-                <App />
-            </LanguageProvider>
-        </ThemeProvider>
-    </React.StrictMode>
-);
+    appContainer: { display: 'flex', flexDirection: 'column', minHeight: '100dvh', backgroundColor:
