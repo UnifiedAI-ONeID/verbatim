@@ -1,3 +1,4 @@
+
 import { CSSProperties } from 'react';
 
 // --- STYLES (using CSS variables) ---
@@ -80,7 +81,8 @@ export const styles: { [key: string]: CSSProperties } = {
 
 export function injectGlobalStyles() {
     const styleSheet = document.createElement("style");
-    styleSheet.innerText = `@keyframes pulse { 0% { transform: scale(0.95); box-shadow: 0 0 0 0 color-mix(in srgb, var(--danger) 70%, transparent); } 70% { transform: scale(1); box-shadow: 0 0 0 20px color-mix(in srgb, var(--danger) 0%, transparent); } 100% { transform: scale(0.95); box-shadow: 0 0 0 0 color-mix(in srgb, var(--danger) 0%, transparent); } } .slider { position: absolute; cursor: pointer; inset: 0; background-color: var(--bg-3); transition: .4s; border-radius: 28px; } .slider:before { position: absolute; content: ""; height: 20px; width: 20px; left: 4px; bottom: 4px; background-color: white; transition: .4s; border-radius: 50%; } input { opacity: 0; width: 0; height: 0; } input:checked + .slider { background-color: var(--accent-primary); } input:checked + .slider:before { transform: translateX(22px); }
+    styleSheet.innerText = `@keyframes spin { to { transform: rotate(360deg); } }
+@keyframes pulse { 0% { transform: scale(0.95); box-shadow: 0 0 0 0 color-mix(in srgb, var(--danger) 70%, transparent); } 70% { transform: scale(1); box-shadow: 0 0 0 20px color-mix(in srgb, var(--danger) 0%, transparent); } 100% { transform: scale(0.95); box-shadow: 0 0 0 0 color-mix(in srgb, var(--danger) 0%, transparent); } } .slider { position: absolute; cursor: pointer; inset: 0; background-color: var(--bg-3); transition: .4s; border-radius: 28px; } .slider:before { position: absolute; content: ""; height: 20px; width: 20px; left: 4px; bottom: 4px; background-color: white; transition: .4s; border-radius: 50%; } input { opacity: 0; width: 0; height: 0; } input:checked + .slider { background-color: var(--accent-primary); } input:checked + .slider:before { transform: translateX(22px); }
 @keyframes confetti-fall { 0% { transform: translateY(-10vh) rotate(0deg); opacity: 1; } 100% { transform: translateY(110vh) rotate(720deg); opacity: 0; } }
 .confetti-piece { position: absolute; width: 10px; height: 20px; opacity: 0; animation: confetti-fall 6s linear forwards; }
 `;

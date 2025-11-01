@@ -1,7 +1,8 @@
 
 
-const CACHE_NAME = 'verbatim-v17'; // Incremented version to ensure SW update
+const CACHE_NAME = 'verbatim-v18'; // Incremented version to ensure SW update
 const urlsToCache = [
+  // App Shell
   '/',
   '/index.html',
   '/index.tsx',
@@ -10,6 +11,8 @@ const urlsToCache = [
   '/manifest.json',
   '/favicon.ico',
   '/icon.svg',
+  
+  // Local assets
   '/icons/icon-16x16.png',
   '/icons/icon-32x32.png',
   '/icons/icon-48x48.png',
@@ -30,7 +33,19 @@ const urlsToCache = [
   '/screenshots/screenshot-4-detail-dark.svg',
   '/screenshots/screenshot-5-record-light.svg',
   '/screenshots/screenshot-6-detail-light.svg',
-  'https://fonts.googleapis.com/css2?family=Poppins:wght@400;600;700&display=swap'
+  
+  // External Dependencies
+  'https://fonts.googleapis.com/css2?family=Poppins:wght@400;600;700&display=swap',
+  'https://esm.sh/react@19.0.0-rc.0',
+  'https://esm.sh/react-dom@19.0.0-rc.0/client',
+  'https://esm.sh/@google/genai@1.28.0',
+  'https://esm.sh/firebase@12.5.0/app',
+  'https://esm.sh/firebase@12.5.0/auth',
+  'https://esm.sh/firebase@12.5.0/firestore',
+  'https://esm.sh/firebase@12.5.0/storage',
+  'https://esm.sh/firebase@12.5.0/functions',
+  'https://esm.sh/firebase@12.5.0/analytics',
+  'https://esm.sh/marked@16.4.1'
 ];
 
 self.addEventListener('install', event => {

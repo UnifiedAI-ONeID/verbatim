@@ -1,3 +1,4 @@
+
 import React, { useState, useCallback, useEffect } from 'react';
 import { User, signOut as firebaseSignOut } from "firebase/auth";
 import { marked } from 'marked';
@@ -7,6 +8,27 @@ import { useLocalization, useTheme } from './contexts';
 import { styles } from './styles';
 import { auth } from './services';
 import { firebaseConfig } from './config';
+
+// --- Loading Component ---
+export const LoadingSpinner = ({ fullScreen = false }: { fullScreen?: boolean }) => {
+    const spinnerStyle: React.CSSProperties = {
+        width: '50px',
+        height: '50px',
+        border: '4px solid var(--bg-3)',
+        borderTopColor: 'var(--accent-primary)',
+        borderRadius: '50%',
+        animation: 'spin 1s linear infinite',
+    };
+
+    if (fullScreen) {
+        return (
+            <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh' }}>
+                <div style={spinnerStyle}></div>
+            </div>
+        );
+    }
+    return <div style={spinnerStyle}></div>;
+};
 
 // --- Sub-Components ---
 export const Header = ({ user, onSignIn, onLogoClick }: { user: User | null; onSignIn: () => void; onLogoClick: () => void; }) => {
@@ -253,7 +275,7 @@ export const DedicationModal = ({ onClose }: { onClose: () => void }) => {
 };
 
 export const FirebaseConfigWarning = ({ children }: { children?: React.ReactNode }) => {
-    const isFirebaseConfigured = firebaseConfig.apiKey !== "YOUR_API_KEY" && firebaseConfig.projectId !== "YOUR_PROJECT_ID" && firebaseConfig.apiKey !== "AIzaSyBjEvuItFoeMQRo3K9poC179RayWSNGRsw"; // Check against the placeholder
+    const isFirebaseConfigured = firebaseConfig.apiKey && !firebaseConfig.apiKey.includes("YOUR_API_KEY") && firebaseConfig.projectId && !firebaseConfig.projectId.includes("YOUR_PROJECT_ID");
 
     if (isFirebaseConfigured) {
         return <>{children}</>;

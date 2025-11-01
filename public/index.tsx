@@ -1,3 +1,4 @@
+
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { createRoot } from 'react-dom/client';
 
@@ -29,7 +30,8 @@ import {
     Modal,
     ActionModal,
     DedicationModal,
-    FirebaseConfigWarning
+    FirebaseConfigWarning,
+    LoadingSpinner
 } from './components';
 
 // Import styles
@@ -357,9 +359,14 @@ const App = () => {
         } catch (err) { setShowActionModal({ type: 'error' }); }
     };
     
-    if (isLoading) return <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh', color: 'var(--text-secondary)' }}>...</div>;
-    
     const renderContent = () => {
+        if (isLoading) {
+            return (
+                <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                    <LoadingSpinner />
+                </div>
+            );
+        }
         if (selectedSession) return <SessionDetailView session={selectedSession} onBack={() => setSelectedSession(null)} onDelete={handleDeleteSession} onTakeAction={handleTakeAction} onUpdateSpeakerName={handleUpdateSpeakerName} editingSpeaker={editingSpeaker} setEditingSpeaker={setEditingSpeaker} />;
         if (activeTab === 'sessions') return user ? <SessionsListView sessions={sessions} onSelectSession={setSelectedSession} searchQuery={searchQuery} setSearchQuery={setSearchQuery} /> : <LoginView prompt={t.signInToView} onSignIn={signInWithGoogle} error={error} />;
         return <RecordView isRecording={isRecording} recordingTime={recordingTime} isSaving={isSaving} error={error} user={user} onStopRecording={handleStopRecording} onStartRecordingClick={handleStartRecordingClick} keepAwake={keepAwakeEnabled} setKeepAwake={setKeepAwakeEnabled} onTogglePip={openPipWindow} />;
