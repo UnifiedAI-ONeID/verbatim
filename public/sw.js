@@ -1,6 +1,6 @@
 
 
-const CACHE_NAME = 'verbatim-v18'; // Incremented version to ensure SW update
+const CACHE_NAME = 'verbatim-v19'; // Incremented version to ensure SW update
 const urlsToCache = [
   // App Shell
   '/',
@@ -82,29 +82,27 @@ self.addEventListener('fetch', event => {
     return;
   }
 
-  // Strategy: Cache-first for all other assets (app shell, fonts, styles, scripts).
-  // This makes the app load instantly and work offline.
+  // Strategy: Stale-While-Revalidate for all other assets.
+  // This provides the speed of cache-first while keeping assets up-to-date.
   event.respondWith(
-    caches.match(event.request).then(cachedResponse => {
-      // Return from cache if available.
-      if (cachedResponse) {
-        return cachedResponse;
-      }
-
-      // Otherwise, fetch from the network.
-      return fetch(event.request).then(networkResponse => {
-        // Check for a valid response to cache.
-        if (!networkResponse || (networkResponse.status !== 200 && networkResponse.type !== 'opaque')) {
+    caches.open(CACHE_NAME).then(cache => {
+      return cache.match(event.request).then(cachedResponse => {
+        const fetchPromise = fetch(event.request).then(networkResponse => {
+          // If the fetch is successful, update the cache.
+          if (networkResponse && networkResponse.status === 200) {
+            cache.put(event.request, networkResponse.clone());
+          }
           return networkResponse;
-        }
-
-        // Clone and cache the new response.
-        const responseToCache = networkResponse.clone();
-        caches.open(CACHE_NAME).then(cache => {
-          cache.put(event.request, responseToCache);
+        }).catch(err => {
+          // The network request failed, possibly because the user is offline.
+          // The cachedResponse will be used in this case (if it exists).
+          console.warn('Network request failed, serving from cache if available.', event.request.url);
         });
 
-        return networkResponse;
+        // Return the cached response immediately if it exists,
+        // otherwise, wait for the network response.
+        // This makes the app load instantly from cache while updating in the background.
+        return cachedResponse || fetchPromise;
       });
     })
   );

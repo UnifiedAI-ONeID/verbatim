@@ -14,9 +14,10 @@ export const LoadingSpinner = ({ fullScreen = false }: { fullScreen?: boolean })
     const spinnerStyle: React.CSSProperties = {
         width: '50px',
         height: '50px',
-        border: '4px solid var(--bg-3)',
-        borderTopColor: 'var(--accent-primary)',
         borderRadius: '50%',
+        background: 'conic-gradient(#00DAC6, #f9c74f, #f94144, #90be6d, #00DAC6)',
+        WebkitMask: 'radial-gradient(farthest-side, transparent calc(100% - 4px), #000 0)',
+        mask: 'radial-gradient(farthest-side, transparent calc(100% - 4px), #000 0)',
         animation: 'spin 1s linear infinite',
     };
 
@@ -275,7 +276,7 @@ export const DedicationModal = ({ onClose }: { onClose: () => void }) => {
 };
 
 export const FirebaseConfigWarning = ({ children }: { children?: React.ReactNode }) => {
-    const isFirebaseConfigured = firebaseConfig.apiKey && !firebaseConfig.apiKey.includes("YOUR_API_KEY") && firebaseConfig.projectId && !firebaseConfig.projectId.includes("YOUR_PROJECT_ID");
+    const isFirebaseConfigured = firebaseConfig.apiKey && !firebaseConfig.apiKey.includes("AIzaSyBjEvuItFoeMQRo3K9poC179RayWSNGRsw") && firebaseConfig.projectId && !firebaseConfig.projectId.includes("gen-lang-client-0046527508");
 
     if (isFirebaseConfigured) {
         return <>{children}</>;
