@@ -1,4 +1,3 @@
-
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -161,8 +160,13 @@
 {
   "imports": {
     "react": "https://aistudiocdn.com/react@^19.2.0",
-    "react-dom/": "https://aistudiocdn.com/react-dom@^19.2.0/",
-    "firebase/": "https://aistudiocdn.com/firebase@^12.5.0/",
+    "react-dom/client": "https://aistudiocdn.com/react-dom@^19.2.0/client",
+    "firebase/app": "https://aistudiocdn.com/firebase@^12.5.0/app",
+    "firebase/auth": "https://aistudiocdn.com/firebase@^12.5.0/auth",
+    "firebase/firestore": "https://aistudiocdn.com/firebase@^12.5.0/firestore",
+    "firebase/storage": "https://aistudiocdn.com/firebase@^12.5.0/storage",
+    "firebase/functions": "https://aistudiocdn.com/firebase@^12.5.0/functions",
+    "firebase/analytics": "https://aistudiocdn.com/firebase@^12.5.0/analytics",
     "@google/genai": "https://aistudiocdn.com/@google/genai@^1.28.0",
     "marked": "https://aistudiocdn.com/marked@^16.4.1"
   }
@@ -173,6 +177,6 @@
   <noscript>You need to enable JavaScript to run this app.</noscript>
   <div id="root"></div>
   <script>console.log('[HTML] Body script executing before module load.');</script>
-  <script type="module" src="/index.tsx"></script>
+  <script type="module" src="./index.tsx"></script>
 </body>
 </html>

@@ -1,4 +1,3 @@
-
 console.log('[components.tsx] Module start.');
 import React, { useState, useCallback, useEffect, useRef } from 'react';
 import { User, signOut as firebaseSignOut, onAuthStateChanged, GoogleAuthProvider, signInWithPopup } from "firebase/auth";
@@ -14,9 +13,8 @@ import { firebaseConfig, tools } from './config.ts';
 import { useKeepAwake } from './hooks.ts';
 
 // --- Error Boundary ---
-// Fix: The constructor-based state initialization was causing TypeScript errors.
-// Switched to modern class property syntax for state, which is cleaner and resolves
-// the issue where `this.props` and `this.state` were not being recognized.
+// FIX: Simplified state initialization using a class property. This modern approach is more concise and resolves
+// type errors related to state initialization in the constructor.
 export class ErrorBoundary extends React.Component<{ children: React.ReactNode }, { hasError: boolean }> {
   state = { hasError: false };
 

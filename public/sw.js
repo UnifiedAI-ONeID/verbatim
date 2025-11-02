@@ -1,6 +1,6 @@
 
 
-const CACHE_NAME = 'verbatim-v25'; // Incremented version to ensure SW update
+const CACHE_NAME = 'verbatim-v26'; // Incremented version to ensure SW update
 const urlsToCache = [
   // App Shell
   '/',
