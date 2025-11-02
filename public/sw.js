@@ -1,6 +1,6 @@
 
 
-const CACHE_NAME = 'verbatim-v26'; // Incremented version to ensure SW update
+const CACHE_NAME = 'verbatim-v27'; // Incremented version to force SW update and clear old cache
 const urlsToCache = [
   // App Shell
   '/',
@@ -65,18 +65,39 @@ self.addEventListener('install', event => {
     caches.open(CACHE_NAME)
       .then(cache => {
         console.log(`[SW] Caching app shell for cache: ${CACHE_NAME}`);
-        // Use a Set to prevent duplicates and addAll
         const uniqueUrlsToCache = [...new Set(urlsToCache)];
-        return Promise.all(
-          uniqueUrlsToCache.map(url => {
-            return cache.add(url).catch(error => {
-              console.warn(`[SW] Failed to cache ${url}:`, error);
+        
+        // Robust caching: fetch and validate before putting into cache
+        const cachingPromises = uniqueUrlsToCache.map(urlToCache => {
+          // Use 'reload' to bypass the HTTP cache and ensure we get a fresh response from the network
+          return fetch(new Request(urlToCache, { cache: 'reload' }))
+            .then(response => {
+              if (!response.ok) {
+                throw new Error(`[SW] Request for ${urlToCache} failed with status ${response.status}`);
+              }
+
+              // CRITICAL FIX: Prevent caching incorrect content types.
+              // This stops the service worker from caching the index.html fallback for a script request.
+              const isScript = /\.(tsx|ts|js)$/.test(urlToCache);
+              const contentType = response.headers.get('content-type');
+              if (isScript && contentType && contentType.includes('text/html')) {
+                console.error(`[SW] Refusing to cache HTML response for script: ${urlToCache}`);
+                // Skip caching this problematic file. The browser will fetch it from the network.
+                return Promise.resolve();
+              }
+
+              console.log(`[SW] Caching valid response for: ${urlToCache}`);
+              return cache.put(urlToCache, response);
+            })
+            .catch(error => {
+              console.warn(`[SW] Failed to cache ${urlToCache}:`, error);
             });
-          })
-        );
+        });
+
+        return Promise.all(cachingPromises);
       })
       .then(() => {
-        console.log('[SW] All app shell assets cached successfully.');
+        console.log('[SW] All app shell assets cached successfully (with validation).');
       })
       .catch(error => {
         console.error('[SW] App shell caching failed:', error);
@@ -107,7 +128,11 @@ self.addEventListener('activate', event => {
 self.addEventListener('fetch', event => {
   const { request } = event;
   const requestUrl = new URL(request.url);
-  console.log(`[SW] Intercepting fetch for: ${requestUrl.pathname}`);
+  
+  // Only log GET requests to keep the console cleaner
+  if (request.method === 'GET') {
+    console.log(`[SW] Intercepting fetch for: ${requestUrl.pathname}`);
+  }
 
   if (request.method !== 'GET') {
     return;

@@ -13,9 +13,10 @@ import { firebaseConfig, tools } from './config.ts';
 import { useKeepAwake } from './hooks.ts';
 
 // --- Error Boundary ---
-// FIX: Simplified state initialization using a class property. This modern approach is more concise and resolves
-// type errors related to state initialization in the constructor.
-export class ErrorBoundary extends React.Component<{ children: React.ReactNode }, { hasError: boolean }> {
+// FIX: Using React.PropsWithChildren to correctly type the component props,
+// which resolves the error about 'this.props' not existing on the type and
+// helps TypeScript understand that this component accepts children.
+export class ErrorBoundary extends React.Component<React.PropsWithChildren, { hasError: boolean }> {
   state = { hasError: false };
 
   static getDerivedStateFromError(error: Error) {
@@ -138,13 +139,47 @@ export const RecordView = ({ recordingStatus, recordingTime, error, user, onStop
     );
 };
 
-export const SessionsListView = ({ sessions, onSelectSession, searchQuery, setSearchQuery }: { sessions: Session[], onSelectSession: (s: Session) => void, searchQuery: string, setSearchQuery: (q: string) => void }) => {
+export const SessionsListView = ({ sessions, onSelectSession, searchQuery, setSearchQuery, isLoading }: { sessions: Session[], onSelectSession: (s: Session) => void, searchQuery: string, setSearchQuery: (q: string) => void, isLoading: boolean }) => {
     const { t } = useLocalization();
     const filtered = sessions.filter((s: Session) => [s.metadata.title, s.results?.summary, s.results?.transcript].some(text => text?.toLowerCase().includes(searchQuery.toLowerCase())));
     return (
         <div style={styles.sessionsView}>
             <div style={styles.sessionsHeader}><h2>{t.recentSessions}</h2><input type="search" placeholder={t.searchPlaceholder} value={searchQuery} onChange={e => setSearchQuery(e.target.value)} style={styles.searchInput} /></div>
-            {filtered.length > 0 ? <ul style={styles.sessionsList}>{filtered.map((s: Session) => <li key={s.id} style={styles.sessionItem} onClick={() => onSelectSession(s)} role="button" tabIndex={0}><div><strong>{s.metadata.title}</strong><span style={styles.sessionItemDate}>{new Date(s.metadata.date).toLocaleDateString()}</span></div><div style={styles.sessionItemStatus}>{s.status==='processing' && <span style={styles.processingChip}>{t.processing}</span>}{s.status==='error'&&<span style={styles.errorChip}>Error</span>}</div></li>)}</ul> : <div style={styles.welcomeContainer}><h3>{t.welcomeMessage}</h3><p>{t.welcomeSubtext}</p></div>}
+            {isLoading ? (
+                <div style={{ display: 'flex', justifyContent: 'center', paddingTop: '50px' }}>
+                    <LoadingSpinner />
+                </div>
+            ) : filtered.length > 0 ? (
+                <ul style={styles.sessionsList}>{filtered.map((s: Session) => <li key={s.id} style={styles.sessionItem} onClick={() => onSelectSession(s)} role="button" tabIndex={0}><div><strong>{s.metadata.title}</strong><span style={styles.sessionItemDate}>{new Date(s.metadata.date).toLocaleDateString()}</span></div><div style={styles.sessionItemStatus}>{s.status === 'processing' && <span style={styles.processingChip}>{t.processing}</span>}{s.status === 'error' && <span style={styles.errorChip}>Error</span>}</div></li>)}</ul>
+            ) : (
+                <div style={styles.welcomeContainer}><h3>{t.welcomeMessage}</h3><p>{t.welcomeSubtext}</p></div>
+            )}
+        </div>
+    );
+};
+
+// --- Transcript Renderer: Securely renders transcript with speaker names ---
+const TranscriptRenderer = ({ transcript, speakers }: { transcript: string; speakers: Record<string, string> }) => {
+    const speakerLabelRegex = /^(Speaker \d+):(.*)$/;
+
+    return (
+        <div>
+            {transcript.split('\n').map((line, index) => {
+                const match = line.match(speakerLabelRegex);
+                if (match) {
+                    const speakerId = match[1];
+                    const text = match[2];
+                    const speakerName = speakers[speakerId] || speakerId;
+                    return (
+                        <p key={index} style={{ margin: '0 0 0.5em 0' }}>
+                            <strong style={{ color: 'var(--accent-primary)' }}>{speakerName}:</strong>
+                            <span>{text}</span>
+                        </p>
+                    );
+                }
+                // Render empty lines as a break for paragraph spacing, or render non-speaker lines as-is.
+                return <p key={index} style={{ margin: '0 0 0.5em 0' }}>{line || <br />}</p>;
+            })}
         </div>
     );
 };
@@ -157,18 +192,20 @@ export const SessionDetailView = ({ session, onBack, onDelete, onTakeAction, onU
     const generateMarkdown = useCallback(() => {
         const { metadata, results, speakers } = session;
         if (!results) return '';
-        const speakerNames = Object.values(speakers || {});
-        const cleanTranscript = (results.transcript || '')
-            .replace(/<strong>(.*?)<\/strong>/g, '**$1**')
-            .replace(/<br\s*\/?>/g, '\n');
+        let transcriptWithNames = results.transcript || '';
+        if (speakers) {
+             for (const [id, name] of Object.entries(speakers)) {
+                transcriptWithNames = transcriptWithNames.replace(new RegExp(`^${id}:`, 'gm'), `${name}:`);
+            }
+        }
 
         return `# ${metadata.title}\n\n` +
             `**${t.dateLabel}** ${new Date(metadata.date).toLocaleString()}\n` +
             `**${t.meetingLocation}** ${metadata.location}\n\n` +
             `## ${t.summaryHeader}\n\n${results.summary || t.noSummary}\n\n` +
             `## ${t.actionItemsHeader}\n\n${results.actionItems.length > 0 ? results.actionItems.map((item:string) => `- ${item}`).join('\n') : t.noActionItems}\n\n` +
-            `## ${t.speakersHeader}\n\n${speakerNames.length > 0 ? speakerNames.map(name => `- ${name}`).join('\n') : ''}\n\n` +
-            `## ${t.transcriptHeader}\n\n${cleanTranscript || t.noTranscript}`;
+            `## ${t.speakersHeader}\n\n${Object.values(speakers || {}).length > 0 ? Object.values(speakers).map(name => `- ${name}`).join('\n') : ''}\n\n` +
+            `## ${t.transcriptHeader}\n\n${transcriptWithNames || t.noTranscript}`;
     }, [session, t]);
 
     const handleCopy = () => {
@@ -194,31 +231,6 @@ export const SessionDetailView = ({ session, onBack, onDelete, onTakeAction, onU
         setShowExport(false);
     };
 
-    const renderTranscript = () => {
-        if (!session.results?.transcript) return t.noTranscript;
-        
-        let transcriptWithNames = session.results.transcript;
-
-        // Sort speakers by number descending (e.g., Speaker 10, Speaker 2, Speaker 1)
-        // to prevent "Speaker 1" from being replaced inside "Speaker 10".
-        const sortedSpeakers = Object.entries(session.speakers || {}).sort(([idA], [idB]) => {
-            const numA = parseInt(idA.replace('Speaker ', ''), 10);
-            const numB = parseInt(idB.replace('Speaker ', ''), 10);
-            return numB - numA;
-        });
-
-        for (const [id, name] of sortedSpeakers) {
-            // Escape the id for safe use in a regular expression
-            const escapedId = id.replace(/[-\/\\^$*+?.()|[\]{}]/g, '\\$&');
-            // Use a word boundary `\b` to match the whole speaker label
-            const regex = new RegExp(`\\b${escapedId}:`, 'g');
-            // Replace the plain text label with the name in Markdown bold
-            transcriptWithNames = transcriptWithNames.replace(regex, `**${name}:**`);
-        }
-
-        // Use marked to parse the final transcript with markdown for bold names
-        return <div dangerouslySetInnerHTML={{ __html: marked.parse(transcriptWithNames) }} />;
-    };
     return (
         <div style={styles.detailView}>
             <div style={styles.detailHeader}>
@@ -246,7 +258,15 @@ export const SessionDetailView = ({ session, onBack, onDelete, onTakeAction, onU
                     <Accordion title={t.summaryHeader} defaultOpen><div style={styles.contentBlock} dangerouslySetInnerHTML={{ __html: marked.parse(session.results.summary || t.noSummary) }}></div></Accordion>
                     <Accordion title={t.actionItemsHeader} defaultOpen><ul style={styles.actionItemsList}>{session.results.actionItems.length > 0 ? session.results.actionItems.map((item:string, i:number) => <li key={i} style={styles.actionItem}><span>{item}</span><button style={styles.takeActionButton} onClick={() => onTakeAction(item, session)}>{t.takeAction}</button></li>) : <li>{t.noActionItems}</li>}</ul></Accordion>
                     <Accordion title={t.speakersHeader}><ul style={styles.speakersList}>{Object.entries(session.speakers || {}).map(([id, name]) => <li key={id} style={styles.speakerItem}>{editingSpeaker?.speakerId === id ? <form onSubmit={e => { e.preventDefault(); onUpdateSpeakerName(session.id, id, (e.target as any).speakerName.value); }}><input name="speakerName" type="text" defaultValue={name as string} onBlur={e => onUpdateSpeakerName(session.id, id, e.target.value)} autoFocus style={styles.speakerInput} /></form> : <><span>{name as string}</span><button onClick={() => setEditingSpeaker({ sessionId: session.id, speakerId: id })} style={styles.editSpeakerButton}>✏️</button></>}</li>)}</ul></Accordion>
-                    <Accordion title={t.transcriptHeader}><div style={styles.transcriptContainer}>{renderTranscript()}</div></Accordion>
+                    <Accordion title={t.transcriptHeader}>
+                        <div style={styles.transcriptContainer}>
+                             {session.results.transcript ? (
+                                <TranscriptRenderer transcript={session.results.transcript} speakers={session.speakers} />
+                            ) : (
+                                t.noTranscript
+                            )}
+                        </div>
+                    </Accordion>
                 </div>
             ) : session.status === 'processing' ? <p>{t.processing}</p> : <p style={styles.errorText}>{session.error || t.processingError}</p>}
         </div>
@@ -398,6 +418,7 @@ export const App = () => {
     const [searchQuery, setSearchQuery] = useState('');
     const [editingSpeaker, setEditingSpeaker] = useState<EditingSpeaker | null>(null);
     const [isLoading, setIsLoading] = useState(true);
+    const [sessionsLoading, setSessionsLoading] = useState(true);
     const [activeTab, setActiveTab] = useState<'record' | 'sessions'>('record');
     const [keepAwakeEnabled, setKeepAwakeEnabled] = useState(() => JSON.parse(localStorage.getItem('verbatim_keepAwake') || 'false'));
     const [showDedication, setShowDedication] = useState(false);
@@ -478,6 +499,8 @@ export const App = () => {
                 console.log(`Auth state changed: User signed in as ${u.displayName} (${u.uid})`);
             } else {
                 console.log("Auth state changed: User signed out.");
+                setSessions([]);
+                setSessionsLoading(false);
             }
             setUser(u);
             setIsLoading(false);
@@ -487,6 +510,7 @@ export const App = () => {
 
     useEffect(() => {
         if (!user) { setSessions([]); return; }
+        setSessionsLoading(true);
         const q = query(collection(db, 'users', user.uid, 'sessions'), orderBy('metadata.date', 'desc'));
         const unsub = onSnapshot(q,
             (snap) => {
@@ -494,10 +518,14 @@ export const App = () => {
                 const sessionData = snap.docs.map(d => ({ id: d.id, ...d.data() } as Session));
                 console.log(`Firestore listener: Received ${sessionData.length} sessions for user ${user.uid}.`);
                 setSessions(sessionData);
+                setSessionsLoading(false);
             },
             (error) => {
                 console.error("Firestore listener error:", error);
-                if (isMounted.current) setError("Could not load sessions due to a database error.");
+                if (isMounted.current) {
+                    setError("Could not load sessions due to a database error.");
+                    setSessionsLoading(false);
+                }
             }
         );
         return () => unsub();
@@ -732,7 +760,7 @@ export const App = () => {
             );
         }
         if (selectedSession) return <SessionDetailView session={selectedSession} onBack={() => setSelectedSession(null)} onDelete={handleDeleteSession} onTakeAction={handleTakeAction} onUpdateSpeakerName={handleUpdateSpeakerName} editingSpeaker={editingSpeaker} setEditingSpeaker={setEditingSpeaker} />;
-        if (activeTab === 'sessions') return user ? <SessionsListView sessions={sessions} onSelectSession={setSelectedSession} searchQuery={searchQuery} setSearchQuery={setSearchQuery} /> : <LoginView prompt={t.signInToView} onSignIn={signInWithGoogle} error={error} />;
+        if (activeTab === 'sessions') return user ? <SessionsListView sessions={sessions} onSelectSession={setSelectedSession} searchQuery={searchQuery} setSearchQuery={setSearchQuery} isLoading={sessionsLoading} /> : <LoginView prompt={t.signInToView} onSignIn={signInWithGoogle} error={error} />;
         return <RecordView recordingStatus={recordingStatus} recordingTime={recordingTime} error={error} user={user} onStopRecording={handleStopRecording} onStartRecordingClick={handleStartRecordingClick} keepAwake={keepAwakeEnabled} setKeepAwake={setKeepAwakeEnabled} onTogglePip={openPipWindow} />;
     };
 
