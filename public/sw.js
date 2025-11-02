@@ -1,6 +1,6 @@
 
 
-const CACHE_NAME = 'verbatim-v23'; // Incremented version to ensure SW update
+const CACHE_NAME = 'verbatim-v24'; // Incremented version to ensure SW update
 const urlsToCache = [
   // App Shell
   '/',
@@ -49,81 +49,102 @@ const urlsToCache = [
 ];
 
 self.addEventListener('install', event => {
+  console.log('[SW] Event: install');
+  self.skipWaiting(); // Ensures the new SW activates immediately
+
   event.waitUntil(
     caches.open(CACHE_NAME)
       .then(cache => {
-        console.log('Opened cache and caching app shell');
-        return cache.addAll(urlsToCache).catch(err => {
-            console.error('Failed to cache initial assets:', err);
-        });
+        console.log(`[SW] Caching app shell for cache: ${CACHE_NAME}`);
+        return cache.addAll(urlsToCache);
+      })
+      .then(() => {
+        console.log('[SW] All app shell assets cached successfully.');
+      })
+      .catch(error => {
+        console.error('[SW] App shell caching failed:', error);
       })
   );
 });
 
-self.addEventListener('fetch', event => {
-  if (event.request.method !== 'GET') {
-    return;
-  }
-
-  const requestUrl = new URL(event.request.url);
-
-  // Strategy: Network-only for API calls and dynamic scripts that need transpilation.
-  const isApiCall = [
-    'googleapis.com',
-    'firebaseio.com',
-    'openstreetmap.org',
-    'cloudfunctions.net', // Catches Firebase Functions calls
-  ].some(host => requestUrl.hostname.includes(host));
-
-  const isDynamicScript = requestUrl.pathname === '/index.tsx' || requestUrl.pathname === '/pip.tsx';
-
-  if (isApiCall || isDynamicScript) {
-    // For API calls and TSX files, always go to the network.
-    // TSX files need to be transpiled server-side and should not be cached.
-    event.respondWith(fetch(event.request));
-    return;
-  }
-
-
-  // Strategy: Stale-While-Revalidate for all other assets.
-  // This provides the speed of cache-first while keeping assets up-to-date.
-  event.respondWith(
-    caches.open(CACHE_NAME).then(cache => {
-      return cache.match(event.request).then(cachedResponse => {
-        const fetchPromise = fetch(event.request).then(networkResponse => {
-          // If the fetch is successful, update the cache.
-          if (networkResponse && networkResponse.status === 200) {
-            cache.put(event.request, networkResponse.clone());
-          }
-          return networkResponse;
-        }).catch(err => {
-          // The network request failed, possibly because the user is offline.
-          // The cachedResponse will be used in this case (if it exists).
-          console.warn('Network request failed, serving from cache if available.', event.request.url);
-        });
-
-        // Return the cached response immediately if it exists,
-        // otherwise, wait for the network response.
-        // This makes the app load instantly from cache while updating in the background.
-        return cachedResponse || fetchPromise;
-      });
-    })
-  );
-});
-
-
 self.addEventListener('activate', event => {
+  console.log('[SW] Event: activate');
   const cacheWhitelist = [CACHE_NAME];
   event.waitUntil(
     caches.keys().then(cacheNames => {
       return Promise.all(
         cacheNames.map(cacheName => {
-          if (cacheWhitelist.indexOf(cacheName) === -1) {
-            console.log('Deleting old cache:', cacheName);
+          if (!cacheWhitelist.includes(cacheName)) {
+            console.log(`[SW] Deleting old cache: ${cacheName}`);
             return caches.delete(cacheName);
           }
         })
       );
+    }).then(() => {
+      console.log('[SW] Old caches cleared. Now ready to handle fetches.');
+      return self.clients.claim(); // Take control of uncontrolled clients
+    })
+  );
+});
+
+self.addEventListener('fetch', event => {
+  const { request } = event;
+  if (request.method !== 'GET') {
+    return;
+  }
+
+  const requestUrl = new URL(request.url);
+
+  // Strategy: Network-only for API calls and dynamic scripts
+  const isApiCall = [
+    'googleapis.com',
+    'firebaseio.com',
+    'openstreetmap.org',
+    'cloudfunctions.net',
+  ].some(host => requestUrl.hostname.includes(host));
+
+  const isDynamicScript = requestUrl.pathname === '/index.tsx' || requestUrl.pathname === '/pip.tsx';
+
+  if (isApiCall || isDynamicScript) {
+    // console.log(`[SW] Network-only strategy for: ${requestUrl.href}`);
+    event.respondWith(
+      fetch(request)
+        .catch(error => {
+          console.error(`[SW] Network fetch failed for (Network-only): ${requestUrl.href}`, error);
+          return new Response(JSON.stringify({ error: 'offline' }), {
+            headers: { 'Content-Type': 'application/json' },
+            status: 503,
+            statusText: 'Service Unavailable'
+          });
+        })
+    );
+    return;
+  }
+
+  // Strategy: Stale-While-Revalidate for all other assets
+  event.respondWith(
+    caches.open(CACHE_NAME).then(cache => {
+      return cache.match(request).then(cachedResponse => {
+        const fetchPromise = fetch(request)
+          .then(networkResponse => {
+            if (networkResponse && networkResponse.status === 200) {
+              cache.put(request, networkResponse.clone());
+            }
+            return networkResponse;
+          })
+          .catch(error => {
+            console.warn(`[SW] Network request failed for ${requestUrl.href}. Serving from cache if available.`, error.message);
+            // If the fetch fails and we don't have a cached response, the promise rejection will bubble up 
+            // and result in a browser network error, which is the desired behavior.
+            if (!cachedResponse) {
+                throw error;
+            }
+          });
+
+        // Return the cached response immediately if it exists,
+        // otherwise, wait for the network response.
+        return cachedResponse || fetchPromise;
+      });
     })
   );
 });
