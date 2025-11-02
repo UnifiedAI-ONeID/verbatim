@@ -1,13 +1,12 @@
 
 
-const CACHE_NAME = 'verbatim-v27'; // Incremented version to force SW update and clear old cache
+const CACHE_NAME = 'verbatim-v28'; // Incremented version to force SW update and clear old cache
 const urlsToCache = [
   // App Shell
   '/',
   '/index.html',
   '/pip.html',
   '/manifest.json',
-  '/favicon.ico',
   '/icon.svg',
 
   // Local TS/TSX source files for offline functionality
@@ -22,20 +21,6 @@ const urlsToCache = [
   '/types.ts',
   
   // Local assets
-  '/icons/icon-16x16.png',
-  '/icons/icon-32x32.png',
-  '/icons/icon-48x48.png',
-  '/icons/icon-72x72.png',
-  '/icons/icon-96x96.png',
-  '/icons/icon-128x128.png',
-  '/icons/icon-144x144.png',
-  '/icons/icon-152x152.png',
-  '/icons/icon-192x192.png',
-  '/icons/icon-384x384.png',
-  '/icons/icon-512x512.png',
-  '/icons/icon-192x192-maskable.png',
-  '/icons/icon-512x512-maskable.png',
-  '/icons/apple-touch-icon.png',
   '/screenshots/screenshot-1-record-dark.svg',
   '/screenshots/screenshot-2-recording-dark.svg',
   '/screenshots/screenshot-3-sessions-dark.svg',
@@ -43,18 +28,8 @@ const urlsToCache = [
   '/screenshots/screenshot-5-record-light.svg',
   '/screenshots/screenshot-6-detail-light.svg',
   
-  // External Dependencies from CDN
-  'https://fonts.googleapis.com/css2?family=Poppins:wght@400;600;700&display=swap',
-  'https://aistudiocdn.com/react@^19.2.0',
-  'https://aistudiocdn.com/react-dom@^19.2.0/client',
-  'https://aistudiocdn.com/@google/genai@^1.28.0',
-  'https://aistudiocdn.com/firebase@^12.5.0/app',
-  'https://aistudiocdn.com/firebase@^12.5.0/auth',
-  'https://aistudiocdn.com/firebase@^12.5.0/firestore',
-  'https://aistudiocdn.com/firebase@^12.5.0/storage',
-  'https://aistudiocdn.com/firebase@^12.5.0/functions',
-  'https://aistudiocdn.com/firebase@^12.5.0/analytics',
-  'https://aistudiocdn.com/marked@^16.4.1'
+  // Only cache stable, non-version-ranged external assets
+  'https://fonts.googleapis.com/css2?family=Poppins:wght@400;600;700&display=swap'
 ];
 
 self.addEventListener('install', event => {

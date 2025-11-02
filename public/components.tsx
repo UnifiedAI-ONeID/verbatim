@@ -13,10 +13,10 @@ import { firebaseConfig, tools } from './config.ts';
 import { useKeepAwake } from './hooks.ts';
 
 // --- Error Boundary ---
-// FIX: The original props type `React.PropsWithChildren` was causing a type error.
-// By explicitly defining the props with `{ children: React.ReactNode }`, we correctly
-// type the component to accept children and resolve the error related to `this.props`.
-export class ErrorBoundary extends React.Component<{ children: React.ReactNode }, { hasError: boolean }> {
+// FIX: Correctly type component props to include `children` using `React.PropsWithChildren`.
+// This resolves the "Property 'props' does not exist" error by using a standard utility type,
+// which is more robust than an inline type definition.
+export class ErrorBoundary extends React.Component<React.PropsWithChildren<{}>, { hasError: boolean }> {
   state = { hasError: false };
 
   static getDerivedStateFromError(error: Error) {

@@ -6,7 +6,8 @@ import { Language, Theme } from './types.ts';
 export const ThemeContext = createContext<{ theme: Theme; setTheme: (theme: Theme) => void; toggleTheme: () => void }>({ theme: 'dark', setTheme: () => {}, toggleTheme: () => {} });
 export const LanguageContext = createContext<{ lang: Language; setLang: (lang: Language) => void; t: typeof translations.en }>({ lang: 'en', setLang: () => {}, t: translations.en });
 
-export const ThemeProvider = ({ children }: { children: React.ReactNode }) => {
+// FIX: Made children prop optional to resolve "Property 'children' is missing" error.
+export const ThemeProvider = ({ children }: { children?: React.ReactNode }) => {
     const [theme, setTheme] = useState<Theme>(() => {
         const storedTheme = localStorage.getItem('verbatim_theme');
         return (storedTheme === 'light' || storedTheme === 'dark') ? storedTheme : 'dark';
@@ -21,7 +22,8 @@ export const ThemeProvider = ({ children }: { children: React.ReactNode }) => {
     return <ThemeContext.Provider value={{ theme, setTheme, toggleTheme }}>{children}</ThemeContext.Provider>;
 };
 
-export const LanguageProvider = ({ children }: { children: React.ReactNode }) => {
+// FIX: Made children prop optional to resolve "Property 'children' is missing" error.
+export const LanguageProvider = ({ children }: { children?: React.ReactNode }) => {
     const [lang, setLang] = useState<Language>(() => {
         const storedLang = localStorage.getItem('verbatim_language') as Language;
         if (storedLang && translations[storedLang]) return storedLang;

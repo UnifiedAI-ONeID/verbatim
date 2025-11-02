@@ -10,7 +10,7 @@
     ],
     "rewrites": [
       {
-        "source": "**",
+        "source": "!**/*.@(js|ts|tsx|css|html|json|svg|png|jpg|ico|webm)",
         "destination": "/index.html"
       }
     ],
