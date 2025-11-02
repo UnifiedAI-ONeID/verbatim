@@ -5,7 +5,7 @@ import { getStorage } from "firebase/storage";
 import { getFunctions } from "firebase/functions";
 import { getAnalytics } from "firebase/analytics";
 import { GoogleGenAI } from "@google/genai";
-import { firebaseConfig } from "./config";
+import { firebaseConfig } from "./config.ts";
 
 // Initialize Firebase
 const firebaseApp = initializeApp(firebaseConfig);

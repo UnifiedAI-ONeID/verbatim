@@ -1,6 +1,6 @@
 import React, { useState, useEffect, createContext, useContext } from 'react';
-import { translations } from './config';
-import { Language, Theme } from './types';
+import { translations } from './config.ts';
+import { Language, Theme } from './types.ts';
 
 // --- Contexts for Theme and Language ---
 export const ThemeContext = createContext<{ theme: Theme; setTheme: (theme: Theme) => void; toggleTheme: () => void }>({ theme: 'dark', setTheme: () => {}, toggleTheme: () => {} });

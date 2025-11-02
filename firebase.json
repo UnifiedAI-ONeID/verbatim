@@ -6,13 +6,18 @@
       "firebase.json",
       "**/.*",
       "**/node_modules/**",
-      "index.html",
+      "src/**",
       "index.tsx",
-      "pip.html",
       "pip.tsx",
-      "sw.js",
-      "manifest.json",
-      "src/**"
+      "public/components.tsx",
+      "public/config.ts",
+      "public/contexts.tsx",
+      "public/hooks.ts",
+      "public/index.tsx",
+      "public/pip.tsx",
+      "public/services.ts",
+      "public/styles.ts",
+      "public/types.ts"
     ],
     "rewrites": [
       {

@@ -1,12 +1,12 @@
 
 
-const CACHE_NAME = 'verbatim-v21'; // Incremented version to ensure SW update
+const CACHE_NAME = 'verbatim-v23'; // Incremented version to ensure SW update
 const urlsToCache = [
   // App Shell
   '/',
   '/index.html',
-  '/index.tsx',
-  '/pip.tsx',
+  // '/index.tsx', // Removed: This needs to be fetched from network to be transpiled
+  // '/pip.tsx',   // Removed: This needs to be fetched from network to be transpiled
   '/pip.html',
   '/manifest.json',
   '/favicon.ico',
@@ -67,8 +67,7 @@ self.addEventListener('fetch', event => {
 
   const requestUrl = new URL(event.request.url);
 
-  // Strategy: Network-only for all API calls to ensure data freshness.
-  // This prevents caching of Firestore data, auth tokens, etc.
+  // Strategy: Network-only for API calls and dynamic scripts that need transpilation.
   const isApiCall = [
     'googleapis.com',
     'firebaseio.com',
@@ -76,11 +75,15 @@ self.addEventListener('fetch', event => {
     'cloudfunctions.net', // Catches Firebase Functions calls
   ].some(host => requestUrl.hostname.includes(host));
 
-  if (isApiCall) {
-    // For API calls, always go to the network.
+  const isDynamicScript = requestUrl.pathname === '/index.tsx' || requestUrl.pathname === '/pip.tsx';
+
+  if (isApiCall || isDynamicScript) {
+    // For API calls and TSX files, always go to the network.
+    // TSX files need to be transpiled server-side and should not be cached.
     event.respondWith(fetch(event.request));
     return;
   }
+
 
   // Strategy: Stale-While-Revalidate for all other assets.
   // This provides the speed of cache-first while keeping assets up-to-date.
