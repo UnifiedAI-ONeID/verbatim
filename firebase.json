@@ -32,6 +32,15 @@
         "value": "no-referrer-when-downgrade"
       },
       {
+        "source": "**/*.@(ts|tsx)",
+        "headers": [
+          {
+            "key": "Content-Type",
+            "value": "application/javascript; charset=utf-8"
+          }
+        ]
+      },
+      {
         "source": "**/*.@(js|html|css|svg|png|jpg|ico)",
         "headers": [{
           "key": "Cache-Control",
