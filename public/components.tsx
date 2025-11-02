@@ -1,3 +1,5 @@
+
+console.log('[components.tsx] Module start.');
 import React, { useState, useCallback, useEffect, useRef } from 'react';
 import { User, signOut as firebaseSignOut, onAuthStateChanged, GoogleAuthProvider, signInWithPopup } from "firebase/auth";
 import { collection, doc, setDoc, query, orderBy, onSnapshot, updateDoc, deleteDoc } from "firebase/firestore";
@@ -10,6 +12,38 @@ import { styles } from './styles.ts';
 import { auth, db, storage, functions, ai } from './services.ts';
 import { firebaseConfig, tools } from './config.ts';
 import { useKeepAwake } from './hooks.ts';
+
+// --- Error Boundary ---
+// Fix: The constructor-based state initialization was causing TypeScript errors.
+// Switched to modern class property syntax for state, which is cleaner and resolves
+// the issue where `this.props` and `this.state` were not being recognized.
+export class ErrorBoundary extends React.Component<{ children: React.ReactNode }, { hasError: boolean }> {
+  state = { hasError: false };
+
+  static getDerivedStateFromError(error: Error) {
+    // Update state so the next render will show the fallback UI.
+    return { hasError: true };
+  }
+
+  componentDidCatch(error: Error, errorInfo: React.ErrorInfo) {
+    // You can also log the error to an error reporting service
+    console.error("Uncaught error in React component:", error, errorInfo);
+  }
+
+  render() {
+    if (this.state.hasError) {
+      // You can render any custom fallback UI
+      return (
+        <div style={{ padding: '20px', margin: 'auto', textAlign: 'center', color: 'var(--danger)' }}>
+          <h2>Something went wrong.</h2>
+          <p>Please try refreshing the page. If the problem persists, the error has been logged to the console.</p>
+          <button style={styles.primaryButton} onClick={() => window.location.reload()}>Refresh</button>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
 
 // --- Loading Component ---
 export const LoadingSpinner = ({ fullScreen = false }: { fullScreen?: boolean }) => {
@@ -57,15 +91,46 @@ export const Header = ({ user, onSignIn, onLogoClick }: { user: User | null; onS
     );
 };
 
-export const RecordView = ({ isRecording, recordingTime, isSaving, error, user, onStopRecording, onStartRecordingClick, keepAwake, setKeepAwake, onTogglePip }: any) => {
+export const RecordView = ({ recordingStatus, recordingTime, error, user, onStopRecording, onStartRecordingClick, keepAwake, setKeepAwake, onTogglePip }: any) => {
     const { t } = useLocalization();
     const formatTime = (s: number) => `${Math.floor(s / 60).toString().padStart(2, '0')}:${(s % 60).toString().padStart(2, '0')}`;
+    
+    const isRecording = recordingStatus === 'recording';
+    const isPreparing = recordingStatus === 'preparing';
+    const isSaving = recordingStatus === 'saving';
+    const isDisabled = isPreparing || isSaving;
+
+    const getButtonContent = () => {
+        if (isPreparing || isSaving) return <LoadingSpinner />;
+        return isRecording ? '⏹️' : '🎤';
+    };
+
+    const getButtonText = () => {
+        if (isSaving) return t.processing;
+        if (isPreparing) return t.preparing;
+        if (isRecording) return formatTime(recordingTime);
+        return user ? t.tapToRecord : t.signInToRecord;
+    };
+
     return (
         <div style={styles.recordView}>
             <div style={styles.recordButtonContainer}>
-                <button style={{ ...styles.recordButton, ...(isRecording ? styles.recordButtonRecording : {}) }} onClick={isRecording ? onStopRecording : onStartRecordingClick} aria-label={isRecording ? t.stopRecording : t.startRecording}>{isRecording ? '⏹️' : '🎤'}</button>
-                <p style={styles.recordButtonText}>{isRecording ? formatTime(recordingTime) : (user ? t.tapToRecord : t.signInToRecord)}</p>
-                 <div style={styles.statusContainer} aria-live="polite">{isSaving ? <p>{t.processing}</p> : error ? <p style={styles.errorText}>{error}</p> : null}</div>
+                <button 
+                    style={{ 
+                        ...styles.recordButton, 
+                        ...(isRecording ? styles.recordButtonRecording : {}),
+                        ...(isDisabled ? styles.recordButtonDisabled : {})
+                    }} 
+                    onClick={isRecording ? onStopRecording : onStartRecordingClick} 
+                    disabled={isDisabled}
+                    aria-label={isRecording ? t.stopRecording : t.startRecording}
+                >
+                    {getButtonContent()}
+                </button>
+                <p style={styles.recordButtonText}>{getButtonText()}</p>
+                 <div style={styles.statusContainer} aria-live="polite">
+                    {error && <p style={styles.errorText}>{error}</p>}
+                 </div>
             </div>
             <footer style={styles.recordFooter}>
                  <label style={styles.toggleSwitchLabel}><span>{t.keepAwake}</span><div style={styles.toggleSwitch}><input type="checkbox" checked={keepAwake} onChange={() => setKeepAwake(!keepAwake)} /><span className="slider"></span></div></label>
@@ -133,8 +198,28 @@ export const SessionDetailView = ({ session, onBack, onDelete, onTakeAction, onU
 
     const renderTranscript = () => {
         if (!session.results?.transcript) return t.noTranscript;
-        let displayTranscript = Object.entries(session.speakers || {}).reduce((acc, [id, name]) => acc.replace(new RegExp(`<strong>${id}:</strong>`, 'g'), `<strong>${name}:</strong>`), session.results.transcript);
-        return <div dangerouslySetInnerHTML={{ __html: marked.parse(displayTranscript) }} />;
+        
+        let transcriptWithNames = session.results.transcript;
+
+        // Sort speakers by number descending (e.g., Speaker 10, Speaker 2, Speaker 1)
+        // to prevent "Speaker 1" from being replaced inside "Speaker 10".
+        const sortedSpeakers = Object.entries(session.speakers || {}).sort(([idA], [idB]) => {
+            const numA = parseInt(idA.replace('Speaker ', ''), 10);
+            const numB = parseInt(idB.replace('Speaker ', ''), 10);
+            return numB - numA;
+        });
+
+        for (const [id, name] of sortedSpeakers) {
+            // Escape the id for safe use in a regular expression
+            const escapedId = id.replace(/[-\/\\^$*+?.()|[\]{}]/g, '\\$&');
+            // Use a word boundary `\b` to match the whole speaker label
+            const regex = new RegExp(`\\b${escapedId}:`, 'g');
+            // Replace the plain text label with the name in Markdown bold
+            transcriptWithNames = transcriptWithNames.replace(regex, `**${name}:**`);
+        }
+
+        // Use marked to parse the final transcript with markdown for bold names
+        return <div dangerouslySetInnerHTML={{ __html: marked.parse(transcriptWithNames) }} />;
     };
     return (
         <div style={styles.detailView}>
@@ -306,8 +391,7 @@ export const App = () => {
     const [user, setUser] = useState<User | null>(null);
     const [sessions, setSessions] = useState<Session[]>([]);
     const [selectedSession, setSelectedSession] = useState<Session | null>(null);
-    const [isRecording, setIsRecording] = useState(false);
-    const [isSaving, setIsSaving] = useState(false);
+    const [recordingStatus, setRecordingStatus] = useState<'idle' | 'preparing' | 'recording' | 'saving'>('idle');
     const [recordingTime, setRecordingTime] = useState(0);
     const [showActionModal, setShowActionModal] = useState<ActionModalData | null>(null);
     const [availableDevices, setAvailableDevices] = useState<MediaDeviceInfo[]>([]);
@@ -328,13 +412,19 @@ export const App = () => {
     const logoClickCount = useRef(0);
     const pipWindowRef = useRef<Window | null>(null);
     const channelRef = useRef<BroadcastChannel | null>(null);
-    const isRecordingRef = useRef(isRecording);
+    const isMounted = useRef(true);
+    const recordingStatusRef = useRef(recordingStatus);
     const recordingTimeRef = useRef(recordingTime);
     
     useEffect(() => {
-        isRecordingRef.current = isRecording;
+        recordingStatusRef.current = recordingStatus;
         recordingTimeRef.current = recordingTime;
-    }, [isRecording, recordingTime]);
+    }, [recordingStatus, recordingTime]);
+
+    useEffect(() => {
+        isMounted.current = true;
+        return () => { isMounted.current = false; };
+    }, []);
 
     const handleLogoClick = () => {
         logoClickCount.current += 1;
@@ -353,6 +443,7 @@ export const App = () => {
             return result.user;
         } catch (error: any) {
             console.error("Authentication error:", error.code, error.message);
+            if (!isMounted.current) return null;
             switch (error.code) {
                 case 'auth/popup-closed-by-user':
                 case 'auth/cancelled-popup-request':
@@ -384,6 +475,7 @@ export const App = () => {
 
     useEffect(() => {
         const unsub = onAuthStateChanged(auth, u => {
+            if (!isMounted.current) return;
             if (u) {
                 console.log(`Auth state changed: User signed in as ${u.displayName} (${u.uid})`);
             } else {
@@ -400,13 +492,14 @@ export const App = () => {
         const q = query(collection(db, 'users', user.uid, 'sessions'), orderBy('metadata.date', 'desc'));
         const unsub = onSnapshot(q,
             (snap) => {
+                if (!isMounted.current) return;
                 const sessionData = snap.docs.map(d => ({ id: d.id, ...d.data() } as Session));
                 console.log(`Firestore listener: Received ${sessionData.length} sessions for user ${user.uid}.`);
                 setSessions(sessionData);
             },
             (error) => {
                 console.error("Firestore listener error:", error);
-                setError("Could not load sessions due to a database error.");
+                if (isMounted.current) setError("Could not load sessions due to a database error.");
             }
         );
         return () => unsub();
@@ -418,7 +511,6 @@ export const App = () => {
         if (mediaRecorderRef.current?.state === "recording") {
             mediaRecorderRef.current.stop();
         }
-        setIsRecording(false);
         if (recordingIntervalRef.current) {
             clearInterval(recordingIntervalRef.current);
             recordingIntervalRef.current = null;
@@ -451,7 +543,7 @@ export const App = () => {
                 if (channelRef.current) {
                     channelRef.current.postMessage({
                         type: 'state_update',
-                        isRecording: isRecordingRef.current,
+                        isRecording: recordingStatusRef.current === 'recording',
                         recordingTime: recordingTimeRef.current,
                     });
                 }
@@ -466,6 +558,7 @@ export const App = () => {
     
     // Effect for sending state updates to PiP window
     useEffect(() => {
+        const isRecording = recordingStatus === 'recording';
         if (channelRef.current && pipWindowRef.current && !pipWindowRef.current.closed) {
             channelRef.current.postMessage({
                 type: 'state_update',
@@ -477,12 +570,14 @@ export const App = () => {
             pipWindowRef.current.close();
             pipWindowRef.current = null;
         }
-    }, [isRecording, recordingTime]);
+    }, [recordingStatus, recordingTime]);
     
     const handleStartRecording = async (deviceId: string) => {
         if (!auth.currentUser) return;
         const currentUser = auth.currentUser;
+        if (!isMounted.current) return;
         setShowDeviceSelector(false);
+        setRecordingStatus('preparing');
         audioChunksRef.current = [];
     
         let stream: MediaStream;
@@ -490,11 +585,13 @@ export const App = () => {
             stream = await navigator.mediaDevices.getUserMedia({ audio: { deviceId: { exact: deviceId } } });
         } catch (err) {
             console.error("Recording setup failed: Could not get user media.", err);
-            setError(t.micPermissionError);
-            return; // Exit early if we can't get the mic
+            if(isMounted.current) {
+                setError(t.micPermissionError);
+                setRecordingStatus('idle');
+            }
+            return; 
         }
         
-        // Now that we have the stream, we can create the session
         const newSessionId = `session_${Date.now()}`;
         const sessionDocRef = doc(db, 'users', currentUser.uid, 'sessions', newSessionId);
     
@@ -505,74 +602,71 @@ export const App = () => {
                 try {
                     const res = await fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${pos.coords.latitude}&lon=${pos.coords.longitude}`);
                     if (res.ok) { const data = await res.json(); locationName = data.display_name; mapUrl = `https://www.google.com/maps?q=${pos.coords.latitude},${pos.coords.longitude}`; }
-                } catch (e) {
-                    console.warn("Could not fetch location name", e);
-                }
+                } catch (e) { console.warn("Could not fetch location name", e); }
             }
     
             const preliminarySession: Omit<Session, 'id' | 'results' | 'speakers'> = { metadata: { title: `Meeting - ${new Date().toLocaleString()}`, date: new Date().toISOString(), location: locationName, mapUrl }, status: 'processing' };
             await setDoc(sessionDocRef, preliminarySession);
-            console.log(`Firestore: Created preliminary session document ${newSessionId}`);
+
+            if (!isMounted.current) { stream.getTracks().forEach(track => track.stop()); return; }
             const newSessionData = { ...preliminarySession, id: newSessionId, results: { transcript: '', summary: '', actionItems: [] }, speakers: {} };
             setSelectedSession(newSessionData);
             setActiveTab('sessions');
     
             mediaRecorderRef.current = new MediaRecorder(stream, { mimeType: 'audio/webm' });
-            
             mediaRecorderRef.current.ondataavailable = e => audioChunksRef.current.push(e.data);
             
             mediaRecorderRef.current.onstop = async () => {
-                setIsSaving(true);
+                if (isMounted.current) setRecordingStatus('saving');
                 releaseWakeLock();
                 const audioBlob = new Blob(audioChunksRef.current, { type: 'audio/webm' });
                 stream.getTracks().forEach(track => track.stop());
     
                 if (audioBlob.size < 2000) {
-                    setError(t.recordingTooShortError);
-                    console.log(`Firestore: Deleting session ${newSessionId} due to short recording.`);
                     await deleteDoc(sessionDocRef);
+                    if (isMounted.current) setError(t.recordingTooShortError);
                 } else if (!navigator.onLine) {
-                    setError(t.offlineError);
-                    console.log(`Firestore: Marking session ${newSessionId} as error due to offline status.`);
                     await updateDoc(sessionDocRef, { status: 'error', error: t.offlineError });
+                     if (isMounted.current) setError(t.offlineError);
                 } else {
                     try {
                         const storageRef = ref(storage, `recordings/${currentUser.uid}/${newSessionId}.webm`);
-                        console.log(`Storage: Uploading recording for session ${newSessionId}...`);
                         await uploadBytes(storageRef, audioBlob);
-                        console.log(`Storage: Upload successful for session ${newSessionId}.`);
-                        
                         const analyzeAudio = httpsCallable(functions, 'analyzeAudio');
-                        console.log(`Functions: Calling analyzeAudio for session ${newSessionId}...`);
                         await analyzeAudio({ sessionId: newSessionId, prompt: t.analysisPrompt });
-                        console.log("Functions: analyzeAudio call successful.");
                     } catch (e) {
-                        console.error("Functions: analyzeAudio call failed.", e);
-                        setError(t.processingError);
+                        console.error("Analysis/upload failed.", e);
                         await updateDoc(sessionDocRef, { status: 'error', error: t.processingError });
+                        if (isMounted.current) setError(t.processingError);
                     }
                 }
-                setIsSaving(false);
+                if (isMounted.current) setRecordingStatus('idle');
             };
     
             mediaRecorderRef.current.start();
-            setIsRecording(true);
+            setRecordingStatus('recording');
             setRecordingTime(0);
             if (recordingIntervalRef.current) clearInterval(recordingIntervalRef.current);
             recordingIntervalRef.current = window.setInterval(() => setRecordingTime(p => p + 1), 1000);
             if (keepAwakeEnabled) requestWakeLock();
+
         } catch (err) {
             console.error("Session creation or recording start failed:", err);
-            setError(t.processingError); // A more generic error
-            // The doc might have been created, so try to clean up.
-            await deleteDoc(sessionDocRef).catch(() => {});
-            // Stop the stream tracks if they are active
             stream.getTracks().forEach(track => track.stop());
+            await deleteDoc(sessionDocRef).catch(() => {});
+            if (isMounted.current) {
+                setError(t.processingError);
+                setRecordingStatus('idle');
+            }
         }
     };
     
     const handleStartRecordingClick = async () => {
         setError(null);
+        if (!navigator.onLine) {
+            setError(t.offlineRecordingError);
+            return;
+        }
         if(!user) {
             const signedInUser = await signInWithGoogle();
             if (!signedInUser) return;
@@ -580,10 +674,14 @@ export const App = () => {
         try {
             const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
             const devices = (await navigator.mediaDevices.enumerateDevices()).filter(d => d.kind === 'audioinput');
-            setAvailableDevices(devices);
-            setShowDeviceSelector(true);
+            if (isMounted.current) {
+                setAvailableDevices(devices);
+                setShowDeviceSelector(true);
+            }
             stream.getTracks().forEach(track => track.stop());
-        } catch (err) { setError(t.micPermissionError); }
+        } catch (err) { 
+            if (isMounted.current) setError(t.micPermissionError); 
+        }
     };
     
     const handleDeleteSession = async (sessionId: string) => {
@@ -618,9 +716,13 @@ export const App = () => {
             const prompt = t.actionPrompt.replace('{meetingTitle}', session.metadata.title).replace('{meetingDate}', new Date(session.metadata.date).toLocaleDateString()).replace('{meetingSummary}', session.results.summary).replace('{actionItemText}', item);
             const response = await ai.models.generateContent({ model: 'gemini-2.5-flash', contents: [{ parts: [{ text: prompt }] }], config: { tools: [{ functionDeclarations: tools }] } });
             const call = response.functionCalls?.[0];
-            if (call) setShowActionModal({ type: call.name, args: call.args, sourceItem: item });
-            else setShowActionModal({ type: 'unknown', sourceItem: item });
-        } catch (err) { setShowActionModal({ type: 'error' }); }
+            if (isMounted.current) {
+                if (call) setShowActionModal({ type: call.name, args: call.args, sourceItem: item });
+                else setShowActionModal({ type: 'unknown', sourceItem: item });
+            }
+        } catch (err) { 
+            if (isMounted.current) setShowActionModal({ type: 'error' }); 
+        }
     };
     
     const renderContent = () => {
@@ -633,7 +735,7 @@ export const App = () => {
         }
         if (selectedSession) return <SessionDetailView session={selectedSession} onBack={() => setSelectedSession(null)} onDelete={handleDeleteSession} onTakeAction={handleTakeAction} onUpdateSpeakerName={handleUpdateSpeakerName} editingSpeaker={editingSpeaker} setEditingSpeaker={setEditingSpeaker} />;
         if (activeTab === 'sessions') return user ? <SessionsListView sessions={sessions} onSelectSession={setSelectedSession} searchQuery={searchQuery} setSearchQuery={setSearchQuery} /> : <LoginView prompt={t.signInToView} onSignIn={signInWithGoogle} error={error} />;
-        return <RecordView isRecording={isRecording} recordingTime={recordingTime} isSaving={isSaving} error={error} user={user} onStopRecording={handleStopRecording} onStartRecordingClick={handleStartRecordingClick} keepAwake={keepAwakeEnabled} setKeepAwake={setKeepAwakeEnabled} onTogglePip={openPipWindow} />;
+        return <RecordView recordingStatus={recordingStatus} recordingTime={recordingTime} error={error} user={user} onStopRecording={handleStopRecording} onStartRecordingClick={handleStartRecordingClick} keepAwake={keepAwakeEnabled} setKeepAwake={setKeepAwakeEnabled} onTogglePip={openPipWindow} />;
     };
 
     return (

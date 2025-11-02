@@ -1,16 +1,25 @@
 
 
-const CACHE_NAME = 'verbatim-v24'; // Incremented version to ensure SW update
+const CACHE_NAME = 'verbatim-v25'; // Incremented version to ensure SW update
 const urlsToCache = [
   // App Shell
   '/',
   '/index.html',
-  // '/index.tsx', // Removed: This needs to be fetched from network to be transpiled
-  // '/pip.tsx',   // Removed: This needs to be fetched from network to be transpiled
   '/pip.html',
   '/manifest.json',
   '/favicon.ico',
   '/icon.svg',
+
+  // Local TS/TSX source files for offline functionality
+  '/index.tsx',
+  '/pip.tsx',
+  '/components.tsx',
+  '/config.ts',
+  '/contexts.tsx',
+  '/hooks.ts',
+  '/services.ts',
+  '/styles.ts',
+  '/types.ts',
   
   // Local assets
   '/icons/icon-16x16.png',
@@ -34,18 +43,18 @@ const urlsToCache = [
   '/screenshots/screenshot-5-record-light.svg',
   '/screenshots/screenshot-6-detail-light.svg',
   
-  // External Dependencies
+  // External Dependencies from CDN
   'https://fonts.googleapis.com/css2?family=Poppins:wght@400;600;700&display=swap',
-  'https://esm.sh/react@19.0.0-rc.0',
-  'https://esm.sh/react-dom@19.0.0-rc.0/client',
-  'https://esm.sh/@google/genai@1.28.0',
-  'https://esm.sh/firebase@12.5.0/app',
-  'https://esm.sh/firebase@12.5.0/auth',
-  'https://esm.sh/firebase@12.5.0/firestore',
-  'https://esm.sh/firebase@12.5.0/storage',
-  'https://esm.sh/firebase@12.5.0/functions',
-  'https://esm.sh/firebase@12.5.0/analytics',
-  'https://esm.sh/marked@16.4.1'
+  'https://aistudiocdn.com/react@^19.2.0',
+  'https://aistudiocdn.com/react-dom@^19.2.0/client',
+  'https://aistudiocdn.com/@google/genai@^1.28.0',
+  'https://aistudiocdn.com/firebase@^12.5.0/app',
+  'https://aistudiocdn.com/firebase@^12.5.0/auth',
+  'https://aistudiocdn.com/firebase@^12.5.0/firestore',
+  'https://aistudiocdn.com/firebase@^12.5.0/storage',
+  'https://aistudiocdn.com/firebase@^12.5.0/functions',
+  'https://aistudiocdn.com/firebase@^12.5.0/analytics',
+  'https://aistudiocdn.com/marked@^16.4.1'
 ];
 
 self.addEventListener('install', event => {
@@ -56,7 +65,15 @@ self.addEventListener('install', event => {
     caches.open(CACHE_NAME)
       .then(cache => {
         console.log(`[SW] Caching app shell for cache: ${CACHE_NAME}`);
-        return cache.addAll(urlsToCache);
+        // Use a Set to prevent duplicates and addAll
+        const uniqueUrlsToCache = [...new Set(urlsToCache)];
+        return Promise.all(
+          uniqueUrlsToCache.map(url => {
+            return cache.add(url).catch(error => {
+              console.warn(`[SW] Failed to cache ${url}:`, error);
+            });
+          })
+        );
       })
       .then(() => {
         console.log('[SW] All app shell assets cached successfully.');
@@ -89,13 +106,14 @@ self.addEventListener('activate', event => {
 
 self.addEventListener('fetch', event => {
   const { request } = event;
+  const requestUrl = new URL(request.url);
+  console.log(`[SW] Intercepting fetch for: ${requestUrl.pathname}`);
+
   if (request.method !== 'GET') {
     return;
   }
 
-  const requestUrl = new URL(request.url);
-
-  // Strategy: Network-only for API calls and dynamic scripts
+  // Strategy: Network-only for API calls
   const isApiCall = [
     'googleapis.com',
     'firebaseio.com',
@@ -103,10 +121,7 @@ self.addEventListener('fetch', event => {
     'cloudfunctions.net',
   ].some(host => requestUrl.hostname.includes(host));
 
-  const isDynamicScript = requestUrl.pathname === '/index.tsx' || requestUrl.pathname === '/pip.tsx';
-
-  if (isApiCall || isDynamicScript) {
-    // console.log(`[SW] Network-only strategy for: ${requestUrl.href}`);
+  if (isApiCall) {
     event.respondWith(
       fetch(request)
         .catch(error => {
@@ -121,7 +136,7 @@ self.addEventListener('fetch', event => {
     return;
   }
 
-  // Strategy: Stale-While-Revalidate for all other assets
+  // Strategy: Stale-While-Revalidate for all other assets (including TSX/TS files)
   event.respondWith(
     caches.open(CACHE_NAME).then(cache => {
       return cache.match(request).then(cachedResponse => {
