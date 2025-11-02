@@ -8,16 +8,7 @@
       "**/node_modules/**",
       "src/**",
       "index.tsx",
-      "pip.tsx",
-      "public/components.tsx",
-      "public/config.ts",
-      "public/contexts.tsx",
-      "public/hooks.ts",
-      "public/index.tsx",
-      "public/pip.tsx",
-      "public/services.ts",
-      "public/styles.ts",
-      "public/types.ts"
+      "pip.tsx"
     ],
     "rewrites": [
       {
