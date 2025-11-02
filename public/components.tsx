@@ -13,10 +13,12 @@ import { firebaseConfig, tools } from './config.ts';
 import { useKeepAwake } from './hooks.ts';
 
 // --- Error Boundary ---
-// FIX: Correctly type component props to include `children` using `React.PropsWithChildren`.
-// This resolves the "Property 'props' does not exist" error by using a standard utility type,
-// which is more robust than an inline type definition.
-export class ErrorBoundary extends React.Component<React.PropsWithChildren<{}>, { hasError: boolean }> {
+// FIX: Refactored to use a named interface for props to solve a type inference issue where `this.props` was not recognized.
+interface ErrorBoundaryProps {
+  children: React.ReactNode;
+}
+
+export class ErrorBoundary extends React.Component<ErrorBoundaryProps, { hasError: boolean }> {
   state = { hasError: false };
 
   static getDerivedStateFromError(error: Error) {
@@ -80,7 +82,10 @@ export const Header = ({ user, onSignIn, onLogoClick }: { user: User | null; onS
     };
     return (
         <header style={styles.header}>
-            <div style={styles.logo} onClick={onLogoClick} role="button" aria-label="Verbatim Logo"><img src="/icon.svg" alt="" style={{ width: '32px', height: '32px', borderRadius: '8px' }} /><span style={{color: 'var(--accent-primary)'}}>{t.title}</span></div>
+            <div style={styles.logo} onClick={onLogoClick} role="button" aria-label="Verbatim Logo">
+                <img src="/icon.svg" alt="" style={styles.logoIcon} />
+                <span style={styles.logoText}>{t.title}</span>
+            </div>
             <div style={styles.headerControls}>
                  <select value={lang} onChange={e => setLang(e.target.value as any)} style={styles.headerSelect} aria-label={t.language}><option value="en">EN</option><option value="es">ES</option><option value="zh-CN">简体</option><option value="zh-TW">繁體</option></select>
                 <button onClick={toggleTheme} style={styles.themeToggleButton} aria-label={`${t.theme}: ${theme}`}>{theme === 'light' ? '🌙' : '☀️'}</button>
@@ -97,7 +102,7 @@ export const RecordView = ({ recordingStatus, recordingTime, error, user, onStop
     const isRecording = recordingStatus === 'recording';
     const isPreparing = recordingStatus === 'preparing';
     const isSaving = recordingStatus === 'saving';
-    const isDisabled = isPreparing || isSaving;
+    const isDisabled = isPreparing || isSaving || !user;
 
     const getButtonContent = () => {
         if (isPreparing || isSaving) return <LoadingSpinner />;
@@ -118,10 +123,10 @@ export const RecordView = ({ recordingStatus, recordingTime, error, user, onStop
                     style={{ 
                         ...styles.recordButton, 
                         ...(isRecording ? styles.recordButtonRecording : {}),
-                        ...(isDisabled ? styles.recordButtonDisabled : {})
+                        ...(isDisabled && !isRecording ? styles.recordButtonDisabled : {})
                     }} 
                     onClick={isRecording ? onStopRecording : onStartRecordingClick} 
-                    disabled={isDisabled}
+                    disabled={isDisabled && !isRecording}
                     aria-label={isRecording ? t.stopRecording : t.startRecording}
                 >
                     {getButtonContent()}
@@ -144,13 +149,16 @@ export const SessionsListView = ({ sessions, onSelectSession, searchQuery, setSe
     const filtered = sessions.filter((s: Session) => [s.metadata.title, s.results?.summary, s.results?.transcript].some(text => text?.toLowerCase().includes(searchQuery.toLowerCase())));
     return (
         <div style={styles.sessionsView}>
-            <div style={styles.sessionsHeader}><h2>{t.recentSessions}</h2><input type="search" placeholder={t.searchPlaceholder} value={searchQuery} onChange={e => setSearchQuery(e.target.value)} style={styles.searchInput} /></div>
+            <div style={styles.sessionsHeader}>
+                <h2 style={styles.sessionsHeaderTitle}>{t.recentSessions}</h2>
+                <input type="search" placeholder={t.searchPlaceholder} value={searchQuery} onChange={e => setSearchQuery(e.target.value)} style={styles.searchInput} />
+            </div>
             {isLoading ? (
                 <div style={{ display: 'flex', justifyContent: 'center', paddingTop: '50px' }}>
                     <LoadingSpinner />
                 </div>
             ) : filtered.length > 0 ? (
-                <ul style={styles.sessionsList}>{filtered.map((s: Session) => <li key={s.id} style={styles.sessionItem} onClick={() => onSelectSession(s)} role="button" tabIndex={0}><div><strong>{s.metadata.title}</strong><span style={styles.sessionItemDate}>{new Date(s.metadata.date).toLocaleDateString()}</span></div><div style={styles.sessionItemStatus}>{s.status === 'processing' && <span style={styles.processingChip}>{t.processing}</span>}{s.status === 'error' && <span style={styles.errorChip}>Error</span>}</div></li>)}</ul>
+                <ul style={styles.sessionsList}>{filtered.map((s: Session) => <li key={s.id} style={styles.sessionItem} onClick={() => onSelectSession(s)} role="button" tabIndex={0}><div style={styles.sessionItemInfo}><strong style={styles.sessionItemTitle}>{s.metadata.title}</strong><span style={styles.sessionItemDate}>{new Date(s.metadata.date).toLocaleDateString()}</span></div><div style={styles.sessionItemStatus}>{s.status === 'processing' && <span style={styles.processingChip}>{t.processing}</span>}{s.status === 'error' && <span style={styles.errorChip}>Error</span>}</div></li>)}</ul>
             ) : (
                 <div style={styles.welcomeContainer}><h3>{t.welcomeMessage}</h3><p>{t.welcomeSubtext}</p></div>
             )}
@@ -250,14 +258,16 @@ export const SessionDetailView = ({ session, onBack, onDelete, onTakeAction, onU
                     </div>
                 )}
             </div>
-            <h2>{session.metadata.title}</h2>
+            <h1 style={styles.detailTitle}>{session.metadata.title}</h1>
             <p style={styles.detailMeta}>{new Date(session.metadata.date).toLocaleString()}</p>
-            <p style={styles.detailMeta}>{t.meetingLocation} <a href={session.metadata.mapUrl} target="_blank" rel="noopener noreferrer">{session.metadata.location}</a></p>
+            <p style={styles.detailMeta}>📍 <a href={session.metadata.mapUrl} target="_blank" rel="noopener noreferrer" style={{color: 'var(--text-secondary)', textDecoration: 'underline'}}>{session.metadata.location}</a></p>
+            
+            <div style={{marginTop: '24px'}}>
             {session.status === 'completed' && session.results ? (
-                <div>
+                <>
                     <Accordion title={t.summaryHeader} defaultOpen><div style={styles.contentBlock} dangerouslySetInnerHTML={{ __html: marked.parse(session.results.summary || t.noSummary) }}></div></Accordion>
                     <Accordion title={t.actionItemsHeader} defaultOpen><ul style={styles.actionItemsList}>{session.results.actionItems.length > 0 ? session.results.actionItems.map((item:string, i:number) => <li key={i} style={styles.actionItem}><span>{item}</span><button style={styles.takeActionButton} onClick={() => onTakeAction(item, session)}>{t.takeAction}</button></li>) : <li>{t.noActionItems}</li>}</ul></Accordion>
-                    <Accordion title={t.speakersHeader}><ul style={styles.speakersList}>{Object.entries(session.speakers || {}).map(([id, name]) => <li key={id} style={styles.speakerItem}>{editingSpeaker?.speakerId === id ? <form onSubmit={e => { e.preventDefault(); onUpdateSpeakerName(session.id, id, (e.target as any).speakerName.value); }}><input name="speakerName" type="text" defaultValue={name as string} onBlur={e => onUpdateSpeakerName(session.id, id, e.target.value)} autoFocus style={styles.speakerInput} /></form> : <><span>{name as string}</span><button onClick={() => setEditingSpeaker({ sessionId: session.id, speakerId: id })} style={styles.editSpeakerButton}>✏️</button></>}</li>)}</ul></Accordion>
+                    <Accordion title={t.speakersHeader}><ul style={styles.speakersList}>{Object.entries(session.speakers || {}).map(([id, name]) => <li key={id} style={styles.speakerItem}>{editingSpeaker?.speakerId === id ? <form style={{display: 'flex', width: '100%', gap: '8px'}} onSubmit={e => { e.preventDefault(); onUpdateSpeakerName(session.id, id, (e.target as any).speakerName.value); }}><input name="speakerName" type="text" defaultValue={name as string} onBlur={e => onUpdateSpeakerName(session.id, id, e.target.value)} autoFocus style={styles.speakerInput} /></form> : <><span>{name as string}</span><button onClick={() => setEditingSpeaker({ sessionId: session.id, speakerId: id })} style={styles.editSpeakerButton}>✏️</button></>}</li>)}</ul></Accordion>
                     <Accordion title={t.transcriptHeader}>
                         <div style={styles.transcriptContainer}>
                              {session.results.transcript ? (
@@ -267,8 +277,9 @@ export const SessionDetailView = ({ session, onBack, onDelete, onTakeAction, onU
                             )}
                         </div>
                     </Accordion>
-                </div>
+                </>
             ) : session.status === 'processing' ? <p>{t.processing}</p> : <p style={styles.errorText}>{session.error || t.processingError}</p>}
+            </div>
         </div>
     );
 };
@@ -281,7 +292,7 @@ export const BottomNav = ({ activeTab, setActiveTab }: { activeTab: string, setA
 export const LoginView = ({ prompt, onSignIn, error }: { prompt: string; onSignIn: () => void; error: string | null; }) => {
     const { t } = useLocalization();
     return (
-        <div style={{ ...styles.loginView, justifyContent: 'center' }}>
+        <div style={styles.loginView}>
             <p>{prompt}</p>
             {error && <p style={styles.errorText}>{error}</p>}
             <button onClick={onSignIn} style={styles.primaryButton}>{t.signIn}</button>
@@ -289,7 +300,7 @@ export const LoginView = ({ prompt, onSignIn, error }: { prompt: string; onSignI
     );
 };
 
-export const Modal = ({ title, onClose, children }: ModalProps) => <div style={styles.modalOverlay} onClick={onClose}><div style={styles.modalContainer} onClick={e => e.stopPropagation()}><div style={styles.modalHeader}><h3>{title}</h3><button style={styles.modalCloseButton} onClick={onClose}>&times;</button></div><div style={styles.modalBody}>{children}</div></div></div>;
+export const Modal = ({ title, onClose, children }: ModalProps) => <div style={styles.modalOverlay} onClick={onClose}><div style={styles.modalContainer} onClick={e => e.stopPropagation()}><div style={styles.modalHeader}><h3 style={styles.modalTitle}>{title}</h3><button style={styles.modalCloseButton} onClick={onClose}>&times;</button></div><div style={styles.modalBody}>{children}</div></div></div>;
 
 export const ActionModal = ({ data, user, onClose }: { data: ActionModalData, user: User | null, onClose: () => void }) => {
     const { t } = useLocalization();
@@ -345,7 +356,7 @@ export const ActionModal = ({ data, user, onClose }: { data: ActionModalData, us
     };
     const titleMap: Record<string, string> = { create_calendar_event: t.addToCalendar, draft_email: t.draftEmail, draft_invoice_email: t.draftInvoiceEmail, initiate_phone_call: t.initiatePhoneCall, create_google_doc: t.createDocument };
     const title = titleMap[type] || t.takeAction;
-    return <Modal title={title} onClose={onClose}><p style={styles.sourceItemText}><em>"{sourceItem}"</em></p>{content()}</Modal>;
+    return <Modal title={title} onClose={onClose}><p style={styles.sourceItemText}>"{sourceItem}"</p>{content()}</Modal>;
 };
 
 export const Accordion = ({ title, children, defaultOpen = false }: AccordionProps) => {
@@ -760,17 +771,25 @@ export const App = () => {
             );
         }
         if (selectedSession) return <SessionDetailView session={selectedSession} onBack={() => setSelectedSession(null)} onDelete={handleDeleteSession} onTakeAction={handleTakeAction} onUpdateSpeakerName={handleUpdateSpeakerName} editingSpeaker={editingSpeaker} setEditingSpeaker={setEditingSpeaker} />;
-        if (activeTab === 'sessions') return user ? <SessionsListView sessions={sessions} onSelectSession={setSelectedSession} searchQuery={searchQuery} setSearchQuery={setSearchQuery} isLoading={sessionsLoading} /> : <LoginView prompt={t.signInToView} onSignIn={signInWithGoogle} error={error} />;
+        
+        if (activeTab === 'sessions') {
+            return user ? <SessionsListView sessions={sessions} onSelectSession={setSelectedSession} searchQuery={searchQuery} setSearchQuery={setSearchQuery} isLoading={sessionsLoading} /> : <LoginView prompt={t.signInToView} onSignIn={signInWithGoogle} error={error} />;
+        }
+    
+        // Default to 'record' tab
+        if (!user) {
+            return <LoginView prompt={t.signInToRecord} onSignIn={signInWithGoogle} error={error} />;
+        }
         return <RecordView recordingStatus={recordingStatus} recordingTime={recordingTime} error={error} user={user} onStopRecording={handleStopRecording} onStartRecordingClick={handleStartRecordingClick} keepAwake={keepAwakeEnabled} setKeepAwake={setKeepAwakeEnabled} onTogglePip={openPipWindow} />;
     };
 
     return (
         <FirebaseConfigWarning>
-            <div style={{ display: 'flex', flexDirection: 'column', minHeight: '100dvh', backgroundColor: 'var(--bg)' }}>
+            <div style={styles.appContainer}>
                 <Header user={user} onSignIn={signInWithGoogle} onLogoClick={handleLogoClick} />
-                <main style={{ flex: 1, overflowY: 'auto', paddingBottom: '70px', display: 'flex', flexDirection: 'column' }}>{renderContent()}</main>
+                <main style={styles.mainContent}>{renderContent()}</main>
                 {!selectedSession && <BottomNav activeTab={activeTab} setActiveTab={(tab) => {setSelectedSession(null); setActiveTab(tab as any)}} />}
-                {showDeviceSelector && <Modal title={t.selectAudioDeviceTitle} onClose={() => setShowDeviceSelector(false)}><p>{t.selectAudioDeviceInstruction}</p><ul style={{listStyle: 'none', padding: 0, margin: '10px 0 0'}}>{availableDevices.map((d, i) => <li key={d.deviceId} style={{ padding: '12px', border: '1px solid var(--border-color)', borderRadius: '8px', marginBottom: '10px', cursor: 'pointer', textAlign: 'center', backgroundColor: 'var(--bg-3)', transition: 'background-color 0.2s' }} onClick={() => handleStartRecording(d.deviceId)}>{d.label || `Mic ${i + 1}`}</li>)}</ul></Modal>}
+                {showDeviceSelector && <Modal title={t.selectAudioDeviceTitle} onClose={() => setShowDeviceSelector(false)}><p>{t.selectAudioDeviceInstruction}</p><ul style={styles.deviceList}>{availableDevices.map((d, i) => <li key={d.deviceId} style={styles.deviceItem} onClick={() => handleStartRecording(d.deviceId)}>{d.label || `Mic ${i + 1}`}</li>)}</ul></Modal>}
                 {showActionModal && <ActionModal data={showActionModal} user={user} onClose={() => setShowActionModal(null)} />}
                 {showDedication && <DedicationModal onClose={() => setShowDedication(false)} />}
             </div>
