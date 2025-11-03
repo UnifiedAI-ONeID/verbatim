@@ -220,7 +220,7 @@ const translations = {
         setupGoogleSignIn: 'Set up Google Sign-In',
         googleClientIdLabel: 'Google Client ID:',
         googleClientIdPlaceholder: 'Paste your Client ID here',
-        googleClientIdInstructions: 'To enable Google Sign-In, please add the GOOGLE_CLIENT_ID to your project secrets, or paste it here to continue.',
+        googleClientIdInstructions: 'To enable Google Sign-In, you must provide a Google Client ID. Paste it here to continue.',
         continue: 'Continue',
     },
     es: {
@@ -362,7 +362,7 @@ const translations = {
         setupGoogleSignIn: 'Configurar Inicio de Sesión de Google',
         googleClientIdLabel: 'ID de Cliente de Google:',
         googleClientIdPlaceholder: 'Pega tu ID de Cliente aquí',
-        googleClientIdInstructions: 'Para habilitar el inicio de sesión con Google, agrega GOOGLE_CLIENT_ID a los secretos de tu proyecto o pégalo aquí para continuar.',
+        googleClientIdInstructions: 'Para habilitar el inicio de sesión con Google, debes proporcionar un ID de cliente de Google. Pégalo aquí para continuar.',
         continue: 'Continuar',
     },
     'zh-CN': {
@@ -474,7 +474,7 @@ const translations = {
             },
             {
                 q: 'Verbatim 能在同一次会议中理解不同的语言吗？',
-                a: '是的！Verbatim 由一个多语言AI驱动，可以处理包含多种语言的音频。所有最终输出，包括摘要、行动项目和文字记录，都将被翻译并以您浏览器的默认语言（英语、西班牙语或中文）呈现。',
+                a: '是的！Verbatim 是由一个多语言AI驱动，可以处理包含多种语言的音频。所有最终输出，包括摘要、行动项目和文字记录，都将被翻译并以您浏览器的默认语言（英语、西班牙语或中文）呈现。',
             },
             {
                 q: '发言者是如何被识别的，我可以更改他们的名字吗？',
@@ -504,7 +504,7 @@ const translations = {
         setupGoogleSignIn: '设置 Google 登录',
         googleClientIdLabel: 'Google 客户端 ID:',
         googleClientIdPlaceholder: '在此处粘贴您的客户端 ID',
-        googleClientIdInstructions: '要启用 Google 登录，请将 GOOGLE_CLIENT_ID 添加到您的项目密钥中，或在此处粘贴以继续。',
+        googleClientIdInstructions: '要启用 Google 登录，您必须提供一个 Google 客户端 ID。在此处粘贴以继续。',
         continue: '继续',
     },
     'zh-TW': {
@@ -619,7 +619,7 @@ const translations = {
                 a: '是的！Verbatim 由一個多語言AI驅動，可以處理包含多種語言的音訊。所有最終輸出，包括摘要、行動項目和文字記錄，都將被翻譯並以您瀏覽器的預設語言（英語、西班牙語或中文）呈現。',
             },
             {
-                q: '發言者是如何被識別的，我可以更改他們的名字嗎？',
+                q: '發言者是如何被識別的，我可以更改他們的嗎？',
                 a: 'AI會自動區分不同的發言者，並將他們標記為“發言人1”等。分析後，點擊發言者姓名旁邊的鉛筆圖示（✏️）。姓名將變為可編輯欄位。輸入新名稱後按Enter鍵或點擊別處即可儲存。這會更新整個文字記錄中的姓名。',
             },
             {
@@ -646,7 +646,7 @@ const translations = {
         setupGoogleSignIn: '設定 Google 登入',
         googleClientIdLabel: 'Google 用戶端 ID:',
         googleClientIdPlaceholder: '在此處貼上您的用戶端 ID',
-        googleClientIdInstructions: '要啟用 Google 登入，請將 GOOGLE_CLIENT_ID 新增至您的專案密鑰中，或在此處貼上以繼續。',
+        googleClientIdInstructions: '要啟用 Google 登入，您必須提供一個 Google 用戶端 ID。在此處貼上以繼續。',
         continue: '繼續',
     }
 };
@@ -800,7 +800,6 @@ const Logo = ({ style }: { style?: CSSProperties }) => (
         <path d="M22 32L32 42L52 22" stroke="white" strokeWidth="8" strokeLinecap="round" strokeLinejoin="round"/>
     </svg>
 );
-
 
 // --- Main Application ---
 const App = () => {
@@ -1370,10 +1369,7 @@ const App = () => {
 const LoginModal: React.FC<{ onLogin: (user: User) => void; onClose: () => void; }> = ({ onLogin, onClose }) => {
     const googleButtonRef = useRef<HTMLDivElement>(null);
     const [error, setError] = useState<string | null>(null);
-    
-    // State to manage the Client ID
-    const [effectiveClientId, setEffectiveClientId] = useState<string | null>(process.env.GOOGLE_CLIENT_ID || null);
-    const [manualClientId, setManualClientId] = useState('');
+    const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID as string;
 
     const handleCredentialResponse = useCallback(async (response: any) => {
         try {
@@ -1391,28 +1387,28 @@ const LoginModal: React.FC<{ onLogin: (user: User) => void; onClose: () => void;
         }
     }, [onLogin]);
 
-    // This effect runs when effectiveClientId is set, to initialize GSI
     useEffect(() => {
-        if (!effectiveClientId) return; // Don't run if we don't have a client ID yet
+        if (!GOOGLE_CLIENT_ID) {
+            setError("Google Client ID is not configured. Please contact the administrator.");
+            return;
+        }
 
         const initializeGSI = () => {
              if (window.google && googleButtonRef.current) {
-                // Clear any previous button
                 googleButtonRef.current.innerHTML = '';
                 try {
                     window.google.accounts.id.initialize({
-                        client_id: effectiveClientId,
+                        client_id: GOOGLE_CLIENT_ID,
                         callback: handleCredentialResponse,
                     });
                     window.google.accounts.id.renderButton(
                         googleButtonRef.current,
                         { theme: 'outline', size: 'large', text: 'continue_with', width: '300' }
                     );
-                    setError(null); // Clear previous errors
+                    setError(null);
                 } catch (e) {
                     console.error("Error initializing Google Sign-In:", e);
                     setError("Failed to initialize Google Sign-In. The Client ID might be invalid.");
-                    setEffectiveClientId(null); // Reset to show the input again
                 }
             } else {
                  console.error("Google Identity Services script not loaded or button ref not ready.");
@@ -1420,7 +1416,6 @@ const LoginModal: React.FC<{ onLogin: (user: User) => void; onClose: () => void;
             }
         };
 
-        // GSI script might not be loaded yet
         if (!window.google) {
             const timeout = setTimeout(initializeGSI, 500);
             return () => clearTimeout(timeout);
@@ -1428,55 +1423,19 @@ const LoginModal: React.FC<{ onLogin: (user: User) => void; onClose: () => void;
             initializeGSI();
         }
 
-    }, [effectiveClientId, handleCredentialResponse]);
-
-    const handleManualIdSubmit = (e: React.FormEvent) => {
-        e.preventDefault();
-        if (manualClientId.trim()) {
-            setEffectiveClientId(manualClientId.trim());
-        }
-    };
-    
-    const renderContent = () => {
-        if (effectiveClientId) {
-            // We have a client ID, show the button (or a loading state)
-            return (
-                <div style={{ textAlign: 'center', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '16px' }}>
-                    <p>{t('loginSubtitle')}</p>
-                    <div ref={googleButtonRef} style={{minHeight: '40px'}}></div>
-                    {error && <p style={{ color: '#ff4d4d' }}>{error}</p>}
-                </div>
-            );
-        } else {
-            // We don't have a client ID, prompt the user for it
-            return (
-                <form onSubmit={handleManualIdSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-                    <p>{t('googleClientIdInstructions')}</p>
-                    <div>
-                        <label htmlFor="google-client-id" style={{ display: 'block', marginBottom: '8px', fontWeight: '600' }}>{t('googleClientIdLabel')}</label>
-                        <input
-                            id="google-client-id"
-                            type="text"
-                            value={manualClientId}
-                            onChange={(e) => setManualClientId(e.target.value)}
-                            placeholder={t('googleClientIdPlaceholder')}
-                            style={{ width: '100%', padding: '10px', borderRadius: '8px', border: '1px solid #444', background: '#2C2C2C', color: 'white', boxSizing: 'border-box' }}
-                        />
-                    </div>
-                    <button type="submit" style={styles.button}>
-                        {t('continue')}
-                    </button>
-                </form>
-            );
-        }
-    };
+    }, [GOOGLE_CLIENT_ID, handleCredentialResponse]);
 
     return (
-        <Modal title={effectiveClientId ? t('loginTitle') : t('setupGoogleSignIn')} onClose={onClose}>
-            {renderContent()}
+        <Modal title={t('loginTitle')} onClose={onClose}>
+            <div style={{ textAlign: 'center', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '16px' }}>
+                <p>{t('loginSubtitle')}</p>
+                <div ref={googleButtonRef} style={{minHeight: '40px'}}></div>
+                {error && <p style={{ color: '#ff4d4d' }}>{error}</p>}
+            </div>
         </Modal>
     );
 };
+
 
 const BottomNavBar: React.FC<{
     activeTab: ActiveTab;
