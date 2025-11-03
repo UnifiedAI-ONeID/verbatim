@@ -1,6 +1,6 @@
 
 
-const CACHE_NAME = 'verbatim-v30'; // Incremented version for the full rebuild
+const CACHE_NAME = 'verbatim-v32'; // Incremented version for the full rebuild
 const urlsToCache = [
   // App Shell
   '/',
@@ -21,6 +21,7 @@ const urlsToCache = [
   '/services.ts',
   '/styles.ts',
   '/types.ts',
+  '/ErrorBoundary.tsx',
   
   // Local assets
   '/screenshots/screenshot-1-record-dark.svg',

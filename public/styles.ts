@@ -1,11 +1,10 @@
-
 import { CSSProperties } from 'react';
 
 // --- STYLES (using CSS variables) ---
 export const styles: { [key: string]: CSSProperties } = {
     // --- App & Layout ---
     appContainer: { display: 'flex', flexDirection: 'column', minHeight: '100dvh', backgroundColor: 'var(--bg)', boxSizing: 'border-box' },
-    mainContent: { flex: 1, overflowY: 'auto', paddingBottom: '80px', display: 'flex', flexDirection: 'column', position: 'relative' },
+    mainContent: { flex: 1, overflowY: 'auto', paddingBottom: '80px', display: 'flex', flexDirection: 'column', position: 'relative', width: '100%' },
     loadingContainer: { display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh', color: 'var(--text-secondary)' },
     
     // --- Header ---
@@ -30,7 +29,6 @@ export const styles: { [key: string]: CSSProperties } = {
     recordButtonDisabled: { backgroundColor: 'var(--bg-3)', color: 'var(--text-tertiary)', cursor: 'not-allowed', boxShadow: 'none' },
     recordButtonText: { marginTop: '24px', fontSize: '1.25rem', color: 'var(--text-secondary)', height: '60px', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 600, transition: 'all 0.3s ease' },
     timerText: { marginTop: '24px', fontSize: '2.5rem', color: 'var(--text-primary)', height: '60px', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 600, fontFamily: 'monospace, "Courier New", Courier', letterSpacing: '2px', transition: 'all 0.3s ease' },
-    statusContainer: { minHeight: '50px', display: 'flex', alignItems: 'center', justifyContent: 'center', textAlign: 'center', marginTop: '16px' },
     recordFooter: { display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '16px', width: '100%', paddingBottom: '10px' },
     visualizerCanvas: { position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%, -50%)', pointerEvents: 'none' },
 
@@ -58,7 +56,8 @@ export const styles: { [key: string]: CSSProperties } = {
     detailHeader: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px', flexWrap: 'wrap', gap: '12px' },
     detailHeaderActions: { display: 'flex', alignItems: 'center', gap: '10px' },
     detailTitle: { margin: '0 0 4px 0', fontSize: '1.75rem' },
-    detailMeta: { color: 'var(--text-secondary)', fontSize: '0.9rem', margin: '4px 0', display: 'flex', alignItems: 'center', gap: '8px' },
+    detailMeta: { color: 'var(--text-secondary)', fontSize: '0.9rem', margin: '4px 0', display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' },
+    detailMetaLocationLink: { color: 'var(--text-secondary)', textDecoration: 'none', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: '200px', display: 'inline-block', verticalAlign: 'bottom' },
     contentBlock: { whiteSpace: 'pre-wrap', lineHeight: 1.7 },
     actionItemsList: { listStyle: 'none', padding: 0, display: 'flex', flexDirection: 'column', gap: '8px' },
     actionItem: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '12px 0', borderBottom: '1px solid var(--border-color)' },
@@ -111,9 +110,6 @@ export const styles: { [key: string]: CSSProperties } = {
     // --- Toast Notification ---
     toastContainer: { position: 'fixed', bottom: '80px', left: '50%', transform: 'translateX(-50%)', backgroundColor: 'var(--bg-3)', color: 'var(--text-primary)', padding: '12px 24px', borderRadius: '24px', boxShadow: '0 4px 15px rgba(0,0,0,0.2)', zIndex: 3000, animation: 'toast-fade-in 0.3s ease-out forwards, toast-fade-out 0.3s ease-in 2.7s forwards' },
 
-    // --- View Transitions ---
-    viewContainer: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, animation: 'view-fade-in 0.3s ease-out' },
-
     // --- Dedication / Config Warning ---
     dedicationOverlay: { position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0, 0, 0, 0.5)', display: 'flex', justifyContent: 'center', alignItems: 'center', zIndex: 3000, overflow: 'hidden' },
     confettiContainer: { position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', pointerEvents: 'none' },
@@ -134,6 +130,31 @@ body { -webkit-tap-highlight-color: transparent; }
   outline: 2px solid var(--accent-secondary);
   outline-offset: 2px;
   border-radius: 4px;
+}
+
+/* Responsive styles for desktop */
+@media (min-width: 768px) {
+    #root {
+        display: flex;
+        justify-content: center;
+    }
+    .app-container > main {
+        max-width: 900px;
+        margin: 0 auto;
+        border-left: 1px solid var(--border-color);
+        border-right: 1px solid var(--border-color);
+        box-shadow: 0 0 40px color-mix(in srgb, var(--text-primary) 5%, transparent);
+    }
+    .app-container > header, .app-container > nav {
+        max-width: 900px;
+        margin: 0 auto;
+        width: 100%;
+    }
+     .app-container > nav {
+        position: sticky;
+        border-right: 1px solid var(--border-color);
+        border-left: 1px solid var(--border-color);
+     }
 }
 
 @keyframes spin { to { transform: rotate(360deg); } }
@@ -174,7 +195,8 @@ input:checked + .slider:before { transform: translateX(22px); }
   100% { transform: translateY(110vh) rotate(720deg); opacity: 0; } 
 }
 .confetti-piece { 
-  position: absolute; width: 10px; height: 20px; opacity: 0; animation: confetti-fall 6s linear forwards; 
+  position: absolute; width: 8px; height: 16px; opacity: 0;
+  animation: confetti-fall 7s linear infinite; 
 }
 `;
     document.head.appendChild(styleSheet);

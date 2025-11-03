@@ -1,6 +1,7 @@
 import React from 'react';
 import { createRoot } from 'react-dom/client';
-import { App, ErrorBoundary } from './components.tsx';
+import { App } from './components.tsx';
+import { ErrorBoundary } from './ErrorBoundary.tsx';
 import { ThemeProvider, LanguageProvider } from './contexts.tsx';
 import { injectGlobalStyles } from './styles.ts';
 
@@ -30,4 +31,15 @@ try {
 } catch (error) {
     console.error('Fatal Error during initialization:', error);
     document.body.innerHTML = `<div style="color:red; padding: 20px;"><strong>Fatal Error:</strong> An uncaught exception occurred during app initialization. Check the console for details.</div>`;
+}
+
+// --- PWA Service Worker Registration ---
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('/sw.js').then(registration => {
+      console.log('SW registered: ', registration);
+    }).catch(registrationError => {
+      console.log('SW registration failed: ', registrationError);
+    });
+  });
 }

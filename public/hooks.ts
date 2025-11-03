@@ -12,6 +12,45 @@ import { auth, db, storage, functions } from './services.ts';
 import { useLocalization } from './contexts.tsx';
 import { Session } from './types.ts';
 
+/**
+ * Fetches the user's current location using the browser's Geolocation API
+ * and performs a reverse geocoding lookup to get a human-readable address.
+ * @returns {Promise<{location: string, mapUrl: string}>} A promise that resolves to an object containing the location string and a URL to view it on a map.
+ */
+const getCurrentLocation = async (): Promise<{ location: string; mapUrl: string; }> => {
+    return new Promise((resolve) => {
+        if (!navigator.geolocation) {
+            resolve({ location: 'N/A', mapUrl: '' });
+            return;
+        }
+        // Attempt to get the current position with a timeout and caching to be efficient.
+        navigator.geolocation.getCurrentPosition(
+            async (position) => {
+                const { latitude, longitude } = position.coords;
+                try {
+                    // Use OpenStreetMap's free Nominatim service for reverse geocoding.
+                    const response = await fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${latitude}&lon=${longitude}`);
+                    if (!response.ok) throw new Error('Reverse geocoding failed');
+                    const data = await response.json();
+                    const location = data.display_name || `${latitude.toFixed(4)}, ${longitude.toFixed(4)}`;
+                    const mapUrl = `https://www.openstreetmap.org/?mlat=${latitude}&mlon=${longitude}#map=15/${latitude}/${longitude}`;
+                    resolve({ location, mapUrl });
+                } catch (error) {
+                    console.error("Reverse geocoding error:", error);
+                    // Fallback to coordinates if the API call fails
+                    resolve({ location: `${latitude.toFixed(4)}, ${longitude.toFixed(4)}`, mapUrl: `https://www.openstreetmap.org/?mlat=${latitude}&mlon=${longitude}#map=15/${latitude}/${longitude}` });
+                }
+            },
+            (error) => {
+                console.warn("Geolocation permission denied or failed:", error.message);
+                resolve({ location: 'Permission Denied', mapUrl: '' });
+            },
+            { enableHighAccuracy: false, timeout: 10000, maximumAge: 600000 }
+        );
+    });
+};
+
+
 export const useKeepAwake = () => {
     const wakeLockRef = useRef<any>(null);
     const requestWakeLock = useCallback(async () => {
@@ -178,11 +217,13 @@ export const useRecorder = (user: firebase.User | null) => {
     const [isRecording, setIsRecording] = useState(false);
     const [recordingTime, setRecordingTime] = useState(0);
     const [status, setStatus] = useState('');
-    const [isMicReady, setIsMicReady] = useState(false);
+    const [analyser, setAnalyser] = useState<AnalyserNode | null>(null);
 
     const mediaRecorderRef = useRef<MediaRecorder | null>(null);
     const audioChunksRef = useRef<Blob[]>([]);
     const timerRef = useRef<number | null>(null);
+    const streamRef = useRef<MediaStream | null>(null);
+    const audioContextRef = useRef<AudioContext | null>(null);
 
     const stopRecording = () => {
         if (mediaRecorderRef.current?.state === 'recording') {
@@ -196,14 +237,25 @@ export const useRecorder = (user: firebase.User | null) => {
 
         try {
             const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-            setIsMicReady(true);
+            streamRef.current = stream;
+
+            const audioContext = new AudioContext();
+            audioContextRef.current = audioContext;
+            const source = audioContext.createMediaStreamSource(stream);
+            const newAnalyser = audioContext.createAnalyser();
+            newAnalyser.fftSize = 256;
+            source.connect(newAnalyser);
+            setAnalyser(newAnalyser);
+
             const mediaRecorder = new MediaRecorder(stream, { mimeType: 'audio/webm' });
             mediaRecorderRef.current = mediaRecorder;
 
             mediaRecorder.ondataavailable = event => audioChunksRef.current.push(event.data);
             
             mediaRecorder.onstop = async () => {
-                stream.getTracks().forEach(track => track.stop());
+                streamRef.current?.getTracks().forEach(track => track.stop());
+                audioContextRef.current?.close();
+                setAnalyser(null);
                 setIsRecording(false);
                 if(timerRef.current) clearInterval(timerRef.current);
                 
@@ -225,12 +277,19 @@ export const useRecorder = (user: firebase.User | null) => {
                 // @google/genai Coding Guidelines: Fix Storage function calls to use v8 compat syntax.
                 const storageRef = storage.ref(`recordings/${user.uid}/${sessionId}.webm`);
                 
+                const locationData = await getCurrentLocation();
+                
                 try {
                     // @google/genai Coding Guidelines: Fix Storage function calls to use v8 compat syntax.
                     await storageRef.put(audioBlob);
                     
                     const newSession: Omit<Session, 'id'> = {
-                        metadata: { title: `Session ${new Date().toLocaleString()}`, date: new Date().toISOString(), location: '', mapUrl: '' },
+                        metadata: { 
+                            title: `Session ${new Date().toLocaleString()}`, 
+                            date: new Date().toISOString(), 
+                            location: locationData.location,
+                            mapUrl: locationData.mapUrl
+                        },
                         results: { transcript: '', summary: '', actionItems: [] },
                         speakers: {},
                         status: 'processing'
@@ -261,9 +320,8 @@ export const useRecorder = (user: firebase.User | null) => {
         } catch (err) {
             console.error('Error starting recording:', err);
             setStatus(t.micPermissionError);
-            setIsMicReady(false);
         }
     };
     
-    return { isRecording, recordingTime, status, isMicReady, startRecording, stopRecording };
+    return { isRecording, recordingTime, status, analyser, startRecording, stopRecording };
 };

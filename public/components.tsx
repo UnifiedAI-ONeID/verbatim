@@ -1,5 +1,3 @@
-
-
 import React, { useState, useCallback, useEffect, useRef, useMemo } from 'react';
 import { marked } from 'marked';
 // @google/genai Coding Guidelines: Fix 'User' type not found error by using firebase.User from the compat library.
@@ -11,34 +9,6 @@ import { styles } from './styles.ts';
 import { ai } from './services.ts';
 import { firebaseConfig, tools } from './config.ts';
 import { useKeepAwake, useAuth, usePictureInPicture, useRecorder, useSessions } from './hooks.ts';
-
-// --- Error Boundary ---
-// @google/genai Coding Guidelines: Fix state and props errors by refactoring to use a class property for state initialization.
-export class ErrorBoundary extends React.Component<React.PropsWithChildren<{}>, { hasError: boolean }> {
-  state = { hasError: false };
-
-  static getDerivedStateFromError(error: Error) {
-    console.error("ErrorBoundary caught an error:", error);
-    return { hasError: true };
-  }
-
-  componentDidCatch(error: Error, errorInfo: React.ErrorInfo) {
-    console.error("Uncaught error in React component:", error, errorInfo);
-  }
-
-  render() {
-    if (this.state.hasError) {
-      return (
-        <div style={{ padding: '20px', margin: 'auto', textAlign: 'center', color: 'var(--danger)' }}>
-          <h2>Something went wrong.</h2>
-          <p>Please try refreshing the page. The error has been logged to the console.</p>
-          <button style={styles.primaryButton} onClick={() => window.location.reload()}>Refresh</button>
-        </div>
-      );
-    }
-    return this.props.children;
-  }
-}
 
 // --- UI Components ---
 const LoadingSpinner = () => (
@@ -57,7 +27,7 @@ const SessionItemSkeleton = () => (
     </li>
 );
 
-const Header = ({ onLogoClick }: { onLogoClick: () => void }) => {
+const Header = React.memo(({ onLogoClick }: { onLogoClick: () => void }) => {
     const { t, lang, setLang } = useLocalization();
     const { theme, toggleTheme } = useTheme();
     const { user, signIn, signOut } = useAuth();
@@ -69,62 +39,36 @@ const Header = ({ onLogoClick }: { onLogoClick: () => void }) => {
                 <span style={styles.logoText}>{t.title}</span>
             </div>
             <div style={styles.headerControls}>
+                 {user && <span style={{color: 'var(--text-secondary)', marginRight: '10px', display: 'block', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: '150px'}}>{t.welcomeUser.replace('{name}', user.displayName || '')}</span>}
                  <select value={lang} onChange={e => setLang(e.target.value as any)} style={styles.headerSelect} aria-label={t.language}><option value="en">EN</option><option value="es">ES</option><option value="zh-CN">简体</option><option value="zh-TW">繁體</option></select>
                 <button onClick={toggleTheme} style={styles.themeToggleButton} aria-label={`${t.theme}: ${theme}`}>{theme === 'light' ? '🌙' : '☀️'}</button>
                 {user ? <button onClick={signOut} style={styles.secondaryButton}>{t.signOut}</button> : <button onClick={signIn} style={styles.primaryButton}>{t.signIn}</button>}
             </div>
         </header>
     );
-};
+});
 
-const MicrophoneIcon = () => (
+const MicrophoneIcon = React.memo(() => (
     <svg width="50%" height="50%" viewBox="0 0 24 24" stroke="currentColor" fill="none" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" xmlns="http://www.w3.org/2000/svg" className="mic-icon">
         <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"></path><path d="M19 10v2a7 7 0 0 1-14 0v-2"></path><line x1="12" y1="19" x2="12" y2="23"></line><line x1="8" y1="23" x2="16" y2="23"></line>
     </svg>
-);
-const StopIcon = () => <svg width="40%" height="40%" viewBox="0 0 24 24" fill="currentColor" xmlns="http://www.w3.org/2000/svg"><rect width="14" height="14" x="5" y="5" rx="2" /></svg>;
+));
+const StopIcon = React.memo(() => <svg width="40%" height="40%" viewBox="0 0 24 24" fill="currentColor" xmlns="http://www.w3.org/2000/svg"><rect width="14" height="14" x="5" y="5" rx="2" /></svg>);
 
 // @google/genai Coding Guidelines: Fix 'User' type not found error by using firebase.User from the compat library.
 const RecordView = ({ user }: { user: firebase.User | null }) => {
     const { t } = useLocalization();
-    const { isRecording, recordingTime, status, isMicReady, startRecording, stopRecording } = useRecorder(user);
+    const { isRecording, recordingTime, status, analyser, startRecording, stopRecording } = useRecorder(user);
     const { updatePip } = usePictureInPicture();
     const canvasRef = useRef<HTMLCanvasElement>(null);
-    const audioContextRef = useRef<AudioContext | null>(null);
-    const analyserRef = useRef<AnalyserNode | null>(null);
-    const sourceRef = useRef<MediaStreamAudioSourceNode | null>(null);
     
      useEffect(() => {
         updatePip(isRecording, recordingTime);
     }, [isRecording, recordingTime, updatePip]);
     
-    useEffect(() => {
-        if (isRecording && isMicReady && canvasRef.current) {
-            if (!audioContextRef.current) {
-                audioContextRef.current = new AudioContext();
-                analyserRef.current = audioContextRef.current.createAnalyser();
-                analyserRef.current.fftSize = 256;
-            }
-        } else if (audioContextRef.current && audioContextRef.current.state !== 'closed') {
-            audioContextRef.current.close().then(() => {
-                audioContextRef.current = null;
-                analyserRef.current = null;
-                if(sourceRef.current) {
-                    sourceRef.current.disconnect();
-                    sourceRef.current = null;
-                }
-            });
-        }
-        return () => {
-            if (audioContextRef.current && audioContextRef.current.state !== 'closed') {
-                audioContextRef.current.close();
-            }
-        };
-    }, [isRecording, isMicReady]);
-
     const drawVisualizer = useCallback(() => {
-        if (!isRecording || !analyserRef.current || !canvasRef.current) return;
-        const analyser = analyserRef.current;
+        if (!isRecording || !analyser || !canvasRef.current) return;
+        
         const canvas = canvasRef.current;
         const ctx = canvas.getContext('2d');
         if (!ctx) return;
@@ -161,20 +105,13 @@ const RecordView = ({ user }: { user: firebase.User | null }) => {
         }
         ctx.restore();
         requestAnimationFrame(drawVisualizer);
-    }, [isRecording]);
+    }, [isRecording, analyser]);
 
     useEffect(() => {
-        if (isRecording && audioContextRef.current && analyserRef.current) {
-            navigator.mediaDevices.getUserMedia({ audio: true })
-            .then(stream => {
-                if (audioContextRef.current && audioContextRef.current.state !== 'closed') {
-                    sourceRef.current = audioContextRef.current.createMediaStreamSource(stream);
-                    sourceRef.current.connect(analyserRef.current!);
-                    drawVisualizer();
-                }
-            }).catch(err => console.error('Error accessing media stream for visualizer:', err));
+        if (isRecording && analyser) {
+            drawVisualizer();
         }
-    }, [isRecording, drawVisualizer]);
+    }, [isRecording, analyser, drawVisualizer]);
 
 
     const formatTime = (seconds: number) => {
@@ -183,7 +120,7 @@ const RecordView = ({ user }: { user: firebase.User | null }) => {
         return `${mins}:${secs}`;
     };
 
-    const isProcessing = status === 'analyzing' || status === 'preparing';
+    const isProcessing = status === t.analyzing || status === t.preparing;
 
     const handleButtonClick = () => {
         if (!user) return; // Button should be disabled anyway
@@ -214,7 +151,7 @@ const RecordView = ({ user }: { user: firebase.User | null }) => {
                     <div style={styles.timerText}>{formatTime(recordingTime)}</div>
                 ) : (
                     <div style={styles.recordButtonText}>
-                        {user ? (isProcessing ? status + '...' : t.tapToRecord) : t.signInToRecord}
+                        {user ? (status || t.tapToRecord) : t.signInToRecord}
                     </div>
                 )}
             </div>
@@ -459,7 +396,14 @@ const DetailView = ({ session, onBack, onDelete, onSpeakerUpdate }: { session: S
             <h1 style={styles.detailTitle}>{session.metadata.title}</h1>
             <div style={styles.detailMeta}>
                 <span>🗓️ {session.metadata.date}</span>
-                {session.metadata.location && <span>📍 <a href={session.metadata.mapUrl} target="_blank" rel="noopener noreferrer">{session.metadata.location}</a></span>}
+                {session.metadata.location && session.metadata.location !== 'N/A' && session.metadata.location !== 'Permission Denied' && (
+                  <span style={{display: 'flex', alignItems: 'center', gap: '4px', overflow: 'hidden'}}>
+                    <span>📍</span>
+                    <a href={session.metadata.mapUrl} target="_blank" rel="noopener noreferrer" style={styles.detailMetaLocationLink} title={session.metadata.location}>
+                      {session.metadata.location}
+                    </a>
+                  </span>
+                )}
             </div>
             
             {session.status === 'error' && <div style={styles.errorText}>{session.error || t.processingError}</div>}
@@ -614,24 +558,24 @@ const ActionModal = ({ data, onClose }: { data: ActionModalData; onClose: () => 
     );
 };
 
-const Dedication = () => {
-    useEffect(() => {
-        const container = document.getElementById('confetti-container');
-        if (container) {
-            for (let i = 0; i < 100; i++) {
-                const confetti = document.createElement('div');
-                confetti.className = 'confetti-piece';
-                confetti.style.left = `${Math.random() * 100}vw`;
-                confetti.style.animationDelay = `${Math.random() * 6}s`;
-                confetti.style.backgroundColor = `hsl(${Math.random() * 360}, 100%, 70%)`;
-                container.appendChild(confetti);
-            }
-        }
-    }, []);
+const Confetti = React.memo(() => {
+    return (
+        <div id="confetti-container" style={styles.confettiContainer}>
+            {Array.from({ length: 50 }).map((_, i) => (
+                <div key={i} className="confetti-piece" style={{
+                    left: `${Math.random() * 100}vw`,
+                    animationDelay: `${Math.random() * 7}s`,
+                    backgroundColor: `hsl(${Math.random() * 360}, 100%, 70%)`,
+                }} />
+            ))}
+        </div>
+    );
+});
 
+const Dedication = () => {
     return (
         <div style={styles.dedicationOverlay}>
-            <div id="confetti-container" style={styles.confettiContainer}></div>
+            <Confetti />
             <div style={styles.dedicationModal}>
                 <p style={styles.dedicationText}>
                     Dedicated to my incredible parents, whose unwavering support and encouragement have been my greatest inspiration.
@@ -665,11 +609,18 @@ export const App = () => {
     const { sessions, sessionsLoading, deleteSession, updateSpeakerName } = useSessions(user);
     const [activeTab, setActiveTab] = useState<ActiveTab>('record');
     const [selectedSession, setSelectedSession] = useState<Session | null>(null);
-    const [showDedication, setShowDedication] = useState(true);
+    const [showDedication, setShowDedication] = useState(false);
 
     useEffect(() => {
-        const timer = setTimeout(() => setShowDedication(false), 5000);
-        return () => clearTimeout(timer);
+        const hasSeen = localStorage.getItem('verbatim_dedication_seen');
+        if (!hasSeen) {
+            setShowDedication(true);
+            const timer = setTimeout(() => {
+                setShowDedication(false);
+                localStorage.setItem('verbatim_dedication_seen', 'true');
+            }, 5000);
+            return () => clearTimeout(timer);
+        }
     }, []);
 
     const handleDelete = async (sessionId: string) => {
@@ -679,17 +630,17 @@ export const App = () => {
         }
     };
 
-    const handleViewChange = (view: ActiveTab) => {
+    const handleViewChange = useCallback((view: ActiveTab) => {
         setSelectedSession(null);
         setActiveTab(view);
-    };
+    }, []);
 
     if (authLoading) return <div style={styles.loadingContainer}><LoadingSpinner /></div>;
     
     const isConfigValid = firebaseConfig.apiKey && !firebaseConfig.apiKey.includes('YOUR_API_KEY');
 
     return (
-        <div style={styles.appContainer}>
+        <div style={styles.appContainer} className="app-container">
             {!isConfigValid && <FirebaseConfigWarning />}
             {showDedication && <Dedication />}
             <Header onLogoClick={() => handleViewChange('record')} />
