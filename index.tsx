@@ -2,12 +2,19 @@ import React, { useState, useRef, CSSProperties, useEffect, useCallback } from '
 import { createRoot } from 'react-dom/client';
 import { GoogleGenAI, Type, FunctionDeclaration } from "@google/genai";
 import { marked } from 'marked';
-import { jwtDecode } from 'jwt-decode';
 
 // --- Type Declarations ---
 declare global {
+  // Fix: Address TypeScript errors by augmenting the global AIStudio interface
+  // with the 'auth' property and ensuring window.aistudio uses this type.
+  interface AIStudio {
+    auth: {
+      getAuthToken: () => Promise<string>;
+    };
+  }
   interface Window {
     google?: any;
+    aistudio?: AIStudio;
   }
 }
 
@@ -48,7 +55,14 @@ type LoginModalProps = {
 const dbService = {
     getUser: async (): Promise<User | null> => {
         const userJson = localStorage.getItem('verbatim_user');
-        return userJson ? JSON.parse(userJson) : null;
+        if (!userJson) return null;
+        try {
+            return JSON.parse(userJson);
+        } catch (error) {
+            console.error('Failed to parse user from localStorage:', error);
+            localStorage.removeItem('verbatim_user'); // Clear corrupted data
+            return null;
+        }
     },
     saveUser: async (user: User): Promise<User> => {
         localStorage.setItem('verbatim_user', JSON.stringify(user));
@@ -59,7 +73,14 @@ const dbService = {
     },
     getSessions: async (userId: string): Promise<Session[]> => {
         const sessionsJson = localStorage.getItem(`verbatim_sessions_${userId}`);
-        return sessionsJson ? JSON.parse(sessionsJson) : [];
+        if (!sessionsJson) return [];
+        try {
+            return JSON.parse(sessionsJson);
+        } catch (error) {
+            console.error('Failed to parse sessions from localStorage:', error);
+            localStorage.removeItem(`verbatim_sessions_${userId}`); // Clear corrupted data
+            return [];
+        }
     },
     saveSession: async (userId: string, session: Session): Promise<void> => {
         const sessions = await dbService.getSessions(userId);
@@ -166,61 +187,43 @@ const Spinner: React.FC = () => (
 );
 
 const LoginModal = ({ onLoginSuccess }: LoginModalProps) => {
-    const [googleClientId] = useState(() => process.env.GOOGLE_CLIENT_ID || null);
+    const [error, setError] = useState<string | null>(null);
 
-    const handleLogin = useCallback(async (response: any) => {
+    const handleLogin = useCallback(async () => {
+        setError(null);
         try {
-            const decoded: any = jwtDecode(response.credential);
+            if (!window.aistudio?.auth?.getAuthToken) {
+                console.error('Auth provider not found.');
+                setError('Authentication service is not available. Please contact support.');
+                return;
+            }
+            const token = await window.aistudio.auth.getAuthToken();
+            const response = await fetch('https://www.googleapis.com/oauth2/v3/userinfo', {
+                headers: {
+                    Authorization: `Bearer ${token}`,
+                },
+            });
+
+            if (!response.ok) {
+                throw new Error(`Failed to fetch user info: ${response.statusText}`);
+            }
+
+            const userInfo = await response.json();
+
             const user: User = {
-                id: decoded.sub,
-                name: decoded.name,
-                email: decoded.email,
-                picture: decoded.picture,
+                id: userInfo.sub,
+                name: userInfo.name,
+                email: userInfo.email,
+                picture: userInfo.picture,
             };
+
             await dbService.saveUser(user);
             onLoginSuccess(user);
-        } catch (error) {
-            console.error('Error decoding JWT or saving user:', error);
+        } catch (err) {
+            console.error('Error during sign-in:', err);
+            setError('An error occurred during sign-in. Please try again.');
         }
     }, [onLoginSuccess]);
-
-    useEffect(() => {
-        if (!googleClientId) {
-            return;
-        }
-
-        const initializeGsi = () => {
-            if (window.google?.accounts?.id) {
-                try {
-                    window.google.accounts.id.initialize({
-                        client_id: googleClientId,
-                        callback: handleLogin,
-                    });
-                    const signInButton = document.getElementById('google-signin-button');
-                    if (signInButton) {
-                        signInButton.innerHTML = '';
-                        window.google.accounts.id.renderButton(
-                            signInButton,
-                            { theme: 'outline', size: 'large', type: 'standard', text: 'signin_with' }
-                        );
-                    }
-                } catch (error) {
-                    console.error("Google Sign-In initialization failed:", error);
-                }
-            }
-        };
-
-        if (window.google?.accounts?.id) {
-            initializeGsi();
-        } else {
-            const script = document.querySelector('script[src="https://accounts.google.com/gsi/client"]');
-            script?.addEventListener('load', initializeGsi);
-            
-            return () => {
-                script?.removeEventListener('load', initializeGsi);
-            };
-        }
-    }, [googleClientId, handleLogin]);
 
     return (
         <div style={styles.authContainer}>
@@ -241,10 +244,14 @@ const LoginModal = ({ onLoginSuccess }: LoginModalProps) => {
                  <p style={{ color: '#A0A0A0', fontSize: '0.9rem', textAlign: 'center', margin: '0 0 24px 0' }}>
                     Sign in to continue to your intelligent meeting dashboard.
                 </p>
-                <div id="google-signin-button" style={styles.signInButtonContainer}></div>
-                 { !googleClientId &&
+                <div style={styles.signInButtonContainer}>
+                    <button onClick={handleLogin} style={styles.signInButton}>
+                        Sign In with Google
+                    </button>
+                </div>
+                 { error &&
                     <p style={{color: '#ffc107', fontSize: '0.8rem', marginTop: '16px'}}>
-                        Google Client ID is not configured. Please contact the administrator.
+                        {error}
                     </p>
                 }
             </div>
@@ -253,55 +260,130 @@ const LoginModal = ({ onLoginSuccess }: LoginModalProps) => {
 };
 
 const App: React.FC = () => {
+    // Auth and User State
     const [user, setUser] = useState<User | null>(null);
     const [isLoading, setIsLoading] = useState(true);
+    const [isLoginModalOpen, setIsLoginModalOpen] = useState(false);
+    const [postLoginAction, setPostLoginAction] = useState<PostLoginAction | null>(null);
+
+    // App State
+    const [activeTab, setActiveTab] = useState<ActiveTab>('sessions');
+    const [sessions, setSessions] = useState<Session[]>([]);
 
     useEffect(() => {
-        const checkUser = async () => {
+        const loadInitialData = async () => {
             try {
                 const existingUser = await dbService.getUser();
-                setUser(existingUser);
+                if (existingUser) {
+                    setUser(existingUser);
+                    const userSessions = await dbService.getSessions(existingUser.id);
+                    setSessions(userSessions);
+                }
             } catch (error) {
-                console.error("Failed to get user:", error);
+                console.error("Failed to load initial data:", error);
             } finally {
                 setIsLoading(false);
             }
         };
-        checkUser();
+        loadInitialData();
     }, []);
+
+    const handleLoginSuccess = async (newUser: User) => {
+        setUser(newUser);
+        setIsLoginModalOpen(false);
+        const userSessions = await dbService.getSessions(newUser.id);
+        setSessions(userSessions);
+
+        if (postLoginAction === 'record') {
+            setActiveTab('record');
+        }
+        setPostLoginAction(null);
+    };
 
     const handleLogout = async () => {
         await dbService.logout();
         setUser(null);
-        if (window.google) {
-            window.google.accounts.id.disableAutoSelect();
+        setSessions([]);
+        setActiveTab('sessions');
+    };
+
+    const handleNewSessionClick = () => {
+        if (user) {
+            setActiveTab('record');
+        } else {
+            setPostLoginAction('record');
+            setIsLoginModalOpen(true);
         }
     };
-    
+
     if (isLoading) {
         return (
-            <div style={{...styles.appContainer, ...styles.centerFlex}}>
+            <div style={{...styles.appContainer, ...styles.centerFlex, height: '100vh'}}>
                 <Spinner />
             </div>
         );
     }
-
-    if (!user) {
-        return <LoginModal onLoginSuccess={setUser} />;
-    }
-
-    // A placeholder for the main application UI
+    
     return (
-        <div style={styles.appContainer}>
-            <div style={styles.header}>
-                <h1 style={{margin: 0}}>Welcome, {user.name}</h1>
-                <button onClick={handleLogout} style={styles.logoutButton}>Logout</button>
+        <>
+            {isLoginModalOpen && <LoginModal onLoginSuccess={handleLoginSuccess} />}
+            <div style={styles.appContainer}>
+                {activeTab === 'sessions' && (
+                    <>
+                        <div style={styles.header}>
+                             <div style={styles.headerTitle}>
+                                <svg width="32" height="32" viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                    <defs><linearGradient id="v_grad_header" x1="0.5" y1="0" x2="0.5" y2="1"><stop stopColor="#00D9C8"/><stop offset="1" stopColor="#00A99D"/></linearGradient></defs>
+                                    <path d="M54 32C54 44.1503 44.1503 54 32 54C19.8497 54 10 44.1503 10 32C10 19.8497 19.8497 10 32 10C38.3995 10 44.2255 12.6106 48.4853 16.8704" stroke="url(#v_grad_header)" strokeWidth="8" strokeLinecap="round"/><path d="M22 32L32 42L52 22" stroke="white" strokeWidth="8" strokeLinecap="round" strokeLinejoin="round"/>
+                                </svg>
+                                <h1 style={{margin: 0, fontSize: '1.5rem'}}>{t.title}</h1>
+                            </div>
+                            {user && (
+                                <button onClick={handleLogout} style={styles.logoutButton}>Logout</button>
+                            )}
+                        </div>
+                        <div style={styles.content}>
+                            {user ? (
+                                sessions.length > 0 ? (
+                                    <div>
+                                        <h2 style={styles.contentTitle}>{t.recentSessions}</h2>
+                                        {/* Session list would go here */}
+                                        <p style={styles.emptyStateText}>You have {sessions.length} session(s).</p>
+                                    </div>
+                                ) : (
+                                    <div style={styles.emptyState}>
+                                        <h2 style={styles.contentTitle}>{t.welcomeUser.replace('{name}', user.name.split(' ')[0])}</h2>
+                                        <p style={styles.emptyStateText}>{t.welcomeSubtext}</p>
+                                    </div>
+                                )
+                            ) : (
+                                <div style={styles.emptyState}>
+                                    <h2 style={styles.contentTitle}>{t.welcomeMessage}</h2>
+                                    <p style={styles.emptyStateText}>{t.welcomeSubtext}</p>
+                                </div>
+                            )}
+                        </div>
+                        <button onClick={handleNewSessionClick} style={styles.fab} aria-label={t.startRecording}>
+                            <span role="img" aria-hidden="true" style={{fontSize: '24px'}}>🎤</span>
+                        </button>
+                    </>
+                )}
+                {activeTab === 'record' && (
+                     <div style={styles.recordingContainer}>
+                        <button onClick={() => setActiveTab('sessions')} style={styles.backButton}>
+                            &larr; {t.backToList}
+                        </button>
+                        <div style={styles.recordingContent}>
+                            <h2 style={{fontSize: '1.8rem', marginBottom: '1rem'}}>Recording...</h2>
+                            <p style={{color: '#ccc', marginBottom: '2rem'}}>A new session has started.</p>
+                             <div style={styles.micPulse}>
+                                <span role="img" aria-hidden="true" style={{fontSize: '48px'}}>🎤</span>
+                             </div>
+                        </div>
+                    </div>
+                )}
             </div>
-            <div style={{...styles.centerFlex, flexDirection: 'column', height: '80vh'}}>
-                <h2>Your sessions will appear here.</h2>
-                <p>Click the record button to start a new session.</p>
-            </div>
-        </div>
+        </>
     );
 };
 
@@ -312,6 +394,11 @@ const styles: { [key: string]: CSSProperties } = {
         justifyContent: 'center',
         alignItems: 'center',
         height: '100%',
+        width: '100%',
+        position: 'absolute',
+        top: 0,
+        left: 0,
+        backgroundColor: '#121212',
     },
     spinner: {
         border: '4px solid rgba(255, 255, 255, 0.3)',
@@ -322,12 +409,16 @@ const styles: { [key: string]: CSSProperties } = {
         animation: 'spin 1s linear infinite',
     },
     authContainer: {
+        position: 'fixed',
+        top: 0,
+        left: 0,
+        zIndex: 1000,
         display: 'flex',
         justifyContent: 'center',
         alignItems: 'center',
         height: '100vh',
         width: '100vw',
-        backgroundColor: '#121212',
+        backgroundColor: 'rgba(0, 0, 0, 0.8)',
         fontFamily: "'Poppins', sans-serif",
     },
     authBox: {
@@ -358,18 +449,49 @@ const styles: { [key: string]: CSSProperties } = {
         justifyContent: 'center',
         marginTop: '24px',
     },
+    signInButton: {
+        background: 'linear-gradient(45deg, #00D9C8, #00A99D)',
+        color: 'white',
+        border: 'none',
+        padding: '12px 24px',
+        borderRadius: '8px',
+        cursor: 'pointer',
+        fontWeight: 600,
+        fontSize: '1rem',
+        width: '100%',
+        boxShadow: '0 2px 8px rgba(0, 217, 200, 0.3)',
+        transition: 'transform 0.2s ease',
+    },
     appContainer: {
         padding: '20px',
         backgroundColor: '#121212',
         color: 'white',
         fontFamily: "'Poppins', sans-serif",
         minHeight: '100vh',
-        boxSizing: 'border-box'
+        boxSizing: 'border-box',
+        display: 'flex',
+        flexDirection: 'column',
     },
     header: {
         display: 'flex',
         justifyContent: 'space-between',
         alignItems: 'center',
+        marginBottom: '2rem',
+    },
+    headerTitle: {
+        display: 'flex',
+        alignItems: 'center',
+        gap: '12px',
+    },
+    loginButton: {
+        background: 'transparent',
+        color: '#00D9C8',
+        border: '2px solid #00D9C8',
+        padding: '8px 16px',
+        borderRadius: '8px',
+        cursor: 'pointer',
+        fontWeight: 600,
+        fontSize: '0.9rem',
     },
     logoutButton: {
         background: '#333',
@@ -378,7 +500,75 @@ const styles: { [key: string]: CSSProperties } = {
         padding: '10px 20px',
         borderRadius: '8px',
         cursor: 'pointer',
-        fontWeight: 600
+        fontWeight: 600,
+    },
+    content: {
+        flex: 1,
+    },
+    contentTitle: {
+        margin: '0 0 1rem 0',
+    },
+    emptyState: {
+        textAlign: 'center',
+        marginTop: '20vh',
+    },
+    emptyStateText: {
+        color: '#A0A0A0',
+        maxWidth: '400px',
+        margin: '0 auto',
+        lineHeight: 1.6,
+    },
+    fab: {
+        position: 'fixed',
+        bottom: '30px',
+        right: '30px',
+        width: '64px',
+        height: '64px',
+        borderRadius: '50%',
+        border: 'none',
+        background: 'linear-gradient(45deg, #00D9C8, #00A99D)',
+        color: 'white',
+        display: 'flex',
+        justifyContent: 'center',
+        alignItems: 'center',
+        boxShadow: '0 4px 12px rgba(0, 217, 200, 0.4)',
+        cursor: 'pointer',
+        transition: 'transform 0.2s ease',
+    },
+    recordingContainer: {
+        display: 'flex',
+        flexDirection: 'column',
+        alignItems: 'center',
+        justifyContent: 'center',
+        flex: 1,
+        textAlign: 'center',
+    },
+    recordingContent: {
+        flex: 1,
+        display: 'flex',
+        flexDirection: 'column',
+        alignItems: 'center',
+        justifyContent: 'center',
+    },
+    backButton: {
+        position: 'absolute',
+        top: '20px',
+        left: '20px',
+        background: 'transparent',
+        color: '#ccc',
+        border: 'none',
+        fontSize: '1rem',
+        cursor: 'pointer',
+    },
+    micPulse: {
+        width: '120px',
+        height: '120px',
+        borderRadius: '50%',
+        background: 'rgba(0, 217, 200, 0.1)',
+        display: 'flex',
+        justifyContent: 'center',
+        alignItems: 'center',
+        animation: 'pulse 2s infinite',
     },
     centerFlex: {
         display: 'flex',
@@ -393,6 +583,11 @@ keyframesStyle.innerHTML = `
 @keyframes spin {
     0% { transform: rotate(0deg); }
     100% { transform: rotate(360deg); }
+}
+@keyframes pulse {
+    0% { box-shadow: 0 0 0 0 rgba(0, 217, 200, 0.4); }
+    70% { box-shadow: 0 0 0 20px rgba(0, 217, 200, 0); }
+    100% { box-shadow: 0 0 0 0 rgba(0, 217, 200, 0); }
 }
 body {
     background-color: #121212;
