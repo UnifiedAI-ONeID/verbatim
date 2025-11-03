@@ -315,7 +315,7 @@ const translations = {
         faq: [
              {
                 q: '¿Qué hay de nuevo en esta versión (Beta v1.3)?',
-                a: 'Esta versión mejora la inteligencia de la IA, particularmente en temas financieros. La IA ahora identifica y resalta mejor las cifras monetarias en el resumen. También introduce una nueva acción de un clic "Redactar Factura" para tareas relevantes, haciendo los seguimientos financieros más rápidos y fáciles.',
+                a: 'Esta versión mejora la inteligencia de la IA, particularly en temas financieros. La IA ahora identifica y resalta mejor las cifras monetarias en el resumen. También introduce una nueva acción de un clic "Redactar Factura" para tareas relevantes, haciendo los seguimientos financieros más rápidos y fáciles.',
             },
             {
                 q: '¿Cómo maneja la aplicación las discusiones sobre dinero?',
@@ -669,6 +669,18 @@ const getPlatform = (): Platform => {
     return 'unknown';
 };
 
+const useMediaQuery = (query: string) => {
+    const [matches, setMatches] = useState(window.matchMedia(query).matches);
+    useEffect(() => {
+        const media = window.matchMedia(query);
+        const listener = () => setMatches(media.matches);
+        media.addEventListener('change', listener);
+        return () => media.removeEventListener('change', listener);
+    }, [query]);
+    return matches;
+};
+
+
 const styles: { [key: string]: CSSProperties } = {
     // ... A large collection of shared styles ...
     app: {
@@ -725,7 +737,6 @@ const styles: { [key: string]: CSSProperties } = {
     },
     mainContent: {
         flex: 1,
-        padding: '24px',
         display: 'flex',
         flexDirection: 'column',
         overflow: 'hidden', // Contain swipeable view
@@ -794,6 +805,8 @@ const App = () => {
     const [audioDevices, setAudioDevices] = useState<MediaDeviceInfo[]>([]);
     const [selectedDeviceId, setSelectedDeviceId] = useState<string>('default');
     const [isLogoHovered, setIsLogoHovered] = useState(false);
+    const isMobile = useMediaQuery('(max-width: 768px)');
+
 
     // Swipe navigation state
     const [touchStartX, setTouchStartX] = useState<number | null>(null);
@@ -1136,48 +1149,6 @@ const App = () => {
         session.results.transcript.toLowerCase().includes(searchQuery.toLowerCase())
     );
 
-    const renderView = () => {
-        if (activeSession && user) {
-            return (
-                <SessionDetail
-                    session={activeSession}
-                    onBack={() => setActiveSession(null)}
-                    onAction={(data) => setActionModalData(data)}
-                    user={user}
-                    onRenameSpeaker={(speakerId, newName) => handleRenameSpeaker(activeSession.id, speakerId, newName)}
-                    editingSpeaker={editingSpeaker}
-                    onSetEditingSpeaker={(speakerId) => setEditingSpeaker({ sessionId: activeSession.id, speakerId })}
-                />
-            );
-        }
-
-        switch (activeTab) {
-            case 'sessions':
-                return <SessionsList
-                    sessions={filteredSessions}
-                    onSelectSession={setActiveSession}
-                    onDeleteSession={async (sessionId) => {
-                        if (!user) return;
-                        await dbService.deleteSession(user.id, sessionId);
-                        setSessions(sessions.filter(s => s.id !== sessionId));
-                    }}
-                />;
-            case 'record':
-            default:
-                return <Recorder
-                    isRecording={isRecording}
-                    isAnalyzing={isAnalyzing}
-                    onStart={handleStartRecordingRequest}
-                    onStop={stopRecording}
-                    errorMessage={errorMessage}
-                    onTogglePiP={togglePiP}
-                    isPiP={isPiP}
-                    onToggleKeepAwake={toggleKeepAwake}
-                    keepScreenAwake={keepScreenAwake}
-                />;
-        }
-    };
-
     if (isLoading) {
         return <div style={styles.app}><div style={{ margin: 'auto', color: '#888' }}>Loading...</div></div>;
     }
@@ -1191,46 +1162,38 @@ const App = () => {
     }
 
     const isSwiping = touchStartX !== null;
-    const swipeableViewStyle: CSSProperties = {
-        height: '100%',
-        width: '100%',
-        flexShrink: 0,
-        transform: `translateX(${activeTab === 'record' ? constrainedOffset : `calc(-100% + ${constrainedOffset}px)`})`,
-        transition: isSwiping ? 'none' : 'transform 0.3s ease-out',
-        willChange: 'transform',
-    };
     
     return (
-        <div style={styles.app}>
-            <header style={styles.header}>
+        <div style={{...styles.app, paddingBottom: isMobile ? '80px' : '0' }}>
+            <header style={{...styles.header, ...(isMobile && { padding: '12px 16px' })}}>
                 <a href="#" 
                    style={{...styles.logo, ...(isLogoHovered && {transform: 'scale(1.05)'})}} 
                    onClick={(e) => { e.preventDefault(); setActiveSession(null); setActiveTab('record'); }}
                    onMouseEnter={() => setIsLogoHovered(true)}
                    onMouseLeave={() => setIsLogoHovered(false)}
                 >
-                    <Logo style={styles.logoImage} />
-                    <h1 style={styles.logoText}>{t('title')}</h1>
+                    <Logo style={{...styles.logoImage, ...(isMobile && { height: '32px', width: '32px' })}} />
+                    {!isMobile && <h1 style={styles.logoText}>{t('title')}</h1>}
                 </a>
                 <div style={styles.userProfile}>
                     {user ? (
                         <>
-                            {user.picture && <img src={user.picture} alt={user.name} style={styles.userImage} />}
-                            <span>{user.name}</span>
-                            <button style={styles.logoutButton} onClick={handleLogout}>{t('logout')}</button>
+                            {user.picture && <img src={user.picture} alt={user.name} style={{...styles.userImage, ...(isMobile && { height: '32px', width: '32px' })}} />}
+                            {!isMobile && <span>{user.name}</span>}
+                            <button style={{...styles.logoutButton, ...(isMobile && { padding: '6px 12px', fontSize: '0.8rem' })}} onClick={handleLogout}>{t('logout')}</button>
                         </>
                     ) : (
-                        <button style={{...styles.button, padding: '10px 20px'}} onClick={() => setIsLoginModalOpen(true)}>
+                        <button style={{...styles.button, ...(isMobile ? {padding: '8px 16px', fontSize: '0.9rem'} : { padding: '10px 20px' })}} onClick={() => setIsLoginModalOpen(true)}>
                             {t('signIn')}
                         </button>
                     )}
-                    <button style={{ ...styles.logoutButton, padding: '8px', marginLeft: '8px' }} onClick={() => setFaqModalOpen(true)} title={t('faqLink')}>?
+                    <button style={{ ...styles.logoutButton, ...(isMobile ? {padding: '6px 10px', fontSize: '0.8rem'} : { padding: '8px', marginLeft: '8px' }) }} onClick={() => setFaqModalOpen(true)} title={t('faqLink')}>?
                     </button>
                 </div>
             </header>
 
-            <main style={styles.mainContent}>
-                {!activeSession && (
+            <main style={{...styles.mainContent, padding: isMobile ? '16px' : '24px'}}>
+                 {!activeSession && !isMobile && (
                     <div style={{ marginBottom: '24px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '16px' }}>
                          <div style={{ flexGrow: 1, maxWidth: '400px' }}>
                              {activeTab === 'sessions' && (
@@ -1262,43 +1225,78 @@ const App = () => {
                              ))}
                         </div>
                     </div>
-                )}
+                 )}
+                 
+                 {isMobile && !activeSession && activeTab === 'sessions' && (
+                     <input
+                        type="search"
+                        placeholder={t('searchPlaceholder')}
+                        value={searchQuery}
+                        onChange={(e) => setSearchQuery(e.target.value)}
+                        style={{ width: '100%', padding: '12px 16px', borderRadius: '20px', border: '1px solid #444', background: '#2C2C2C', color: 'white', marginBottom: '16px', boxSizing: 'border-box' }}
+                    />
+                 )}
                 
-                <div 
-                    style={{ flex: 1, display: 'flex', width: '200%' }}
-                    onTouchStart={!activeSession ? handleTouchStart : undefined}
-                    onTouchMove={!activeSession ? handleTouchMove : undefined}
-                    onTouchEnd={!activeSession ? handleTouchEnd : undefined}
-                >
-                    <div style={swipeableViewStyle}>
-                         {activeSession ? renderView() : <Recorder
-                            isRecording={isRecording}
-                            isAnalyzing={isAnalyzing}
-                            onStart={handleStartRecordingRequest}
-                            onStop={stopRecording}
-                            errorMessage={errorMessage}
-                            onTogglePiP={togglePiP}
-                            isPiP={isPiP}
-                            onToggleKeepAwake={toggleKeepAwake}
-                            keepScreenAwake={keepScreenAwake}
-                         />}
+                 {activeSession && user ? (
+                    <SessionDetail
+                        session={activeSession}
+                        onBack={() => setActiveSession(null)}
+                        onAction={(data) => setActionModalData(data)}
+                        user={user}
+                        onRenameSpeaker={(speakerId, newName) => handleRenameSpeaker(activeSession.id, speakerId, newName)}
+                        editingSpeaker={editingSpeaker}
+                        onSetEditingSpeaker={(speakerId) => setEditingSpeaker({ sessionId: activeSession.id, speakerId })}
+                        isMobile={isMobile}
+                    />
+                ) : (
+                    <div 
+                        style={{ flex: 1, overflow: 'hidden' }}
+                        onTouchStart={handleTouchStart}
+                        onTouchMove={handleTouchMove}
+                        onTouchEnd={handleTouchEnd}
+                    >
+                        <div style={{
+                            display: 'flex',
+                            width: '200%',
+                            height: '100%',
+                            transform: `translateX(calc(${activeTab === 'sessions' ? '-50%' : '0%'} + ${constrainedOffset}px))`,
+                            transition: isSwiping ? 'none' : 'transform 0.3s ease-out',
+                            willChange: 'transform',
+                        }}>
+                            <div style={{ width: '50%', height: '100%' }}>
+                                <Recorder
+                                    isRecording={isRecording}
+                                    isAnalyzing={isAnalyzing}
+                                    onStart={handleStartRecordingRequest}
+                                    onStop={stopRecording}
+                                    errorMessage={errorMessage}
+                                    onTogglePiP={togglePiP}
+                                    isPiP={isPiP}
+                                    onToggleKeepAwake={toggleKeepAwake}
+                                    keepScreenAwake={keepScreenAwake}
+                                    isMobile={isMobile}
+                                />
+                            </div>
+                            <div style={{ width: '50%', height: '100%' }}>
+                                <SessionsList
+                                    sessions={filteredSessions}
+                                    onSelectSession={setActiveSession}
+                                    onDeleteSession={async (sessionId) => {
+                                        if (!user) return;
+                                        await dbService.deleteSession(user.id, sessionId);
+                                        setSessions(sessions.filter(s => s.id !== sessionId));
+                                    }}
+                                    isMobile={isMobile}
+                                />
+                            </div>
+                        </div>
                     </div>
-                    <div style={swipeableViewStyle}>
-                         {activeSession ? renderView() : <SessionsList
-                            sessions={filteredSessions}
-                            onSelectSession={setActiveSession}
-                            onDeleteSession={async (sessionId) => {
-                                if (!user) return;
-                                await dbService.deleteSession(user.id, sessionId);
-                                setSessions(sessions.filter(s => s.id !== sessionId));
-                            }}
-                         />}
-                    </div>
-                </div>
-
+                )}
             </main>
             
-            <footer style={styles.footer}>
+            {!activeSession && isMobile && <BottomNavBar activeTab={activeTab} onTabClick={handleTabClick} />}
+
+            <footer style={{...styles.footer, display: isMobile ? 'none' : 'block' }}>
                 <p>&copy; {new Date().getFullYear()} Verbatim. {t('footerText')}</p>
             </footer>
             
@@ -1422,6 +1420,59 @@ const LoginModal: React.FC<{ onLogin: (user: User) => void; onClose: () => void;
     );
 };
 
+const BottomNavBar: React.FC<{
+    activeTab: ActiveTab;
+    onTabClick: (tab: ActiveTab) => void;
+}> = ({ activeTab, onTabClick }) => {
+    const navStyles: { [key: string]: CSSProperties } = {
+        container: {
+            position: 'fixed',
+            bottom: 0,
+            left: 0,
+            right: 0,
+            display: 'flex',
+            backgroundColor: '#1A1A1A',
+            borderTop: '1px solid #333',
+            zIndex: 100
+        },
+        button: {
+            flex: 1,
+            padding: '12px',
+            background: 'none',
+            border: 'none',
+            color: '#888',
+            cursor: 'pointer',
+            textAlign: 'center',
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center',
+            gap: '4px',
+            fontSize: '0.75rem',
+            borderTop: '3px solid transparent',
+        },
+        activeButton: {
+            color: '#00A99D',
+            borderTop: '3px solid #00A99D'
+        },
+        icon: {
+            fontSize: '1.5rem',
+        }
+    };
+    return (
+        <nav style={navStyles.container}>
+            <button style={{...navStyles.button, ...(activeTab === 'record' && navStyles.activeButton)}} onClick={() => onTabClick('record')}>
+                <span style={navStyles.icon}>🎤</span>
+                <span>{t('record')}</span>
+            </button>
+            <button style={{...navStyles.button, ...(activeTab === 'sessions' && navStyles.activeButton)}} onClick={() => onTabClick('sessions')}>
+                <span style={navStyles.icon}>📼</span>
+                <span>{t('sessions')}</span>
+            </button>
+        </nav>
+    );
+};
+
+
 // ... All other components (Recorder, SessionsList, etc.) go here ...
 const Recorder: React.FC<{
     isRecording: boolean;
@@ -1433,10 +1484,9 @@ const Recorder: React.FC<{
     isPiP: boolean;
     onToggleKeepAwake: () => void;
     keepScreenAwake: boolean;
-}> = ({ isRecording, isAnalyzing, onStart, onStop, errorMessage, onTogglePiP, isPiP, onToggleKeepAwake, keepScreenAwake }) => {
+    isMobile: boolean;
+}> = ({ isRecording, isAnalyzing, onStart, onStop, errorMessage, onTogglePiP, isPiP, onToggleKeepAwake, keepScreenAwake, isMobile }) => {
     
-    const platform = getPlatform();
-
     const recorderStyles: { [key: string]: CSSProperties } = {
         container: {
             display: 'flex',
@@ -1449,8 +1499,8 @@ const Recorder: React.FC<{
             height: '100%',
         },
         recordButton: {
-            width: '150px',
-            height: '150px',
+            width: isMobile ? '120px' : '150px',
+            height: isMobile ? '120px' : '150px',
             borderRadius: '50%',
             border: '5px solid #00A99D',
             backgroundColor: isRecording ? '#dc3545' : '#1A1A1A',
@@ -1474,6 +1524,7 @@ const Recorder: React.FC<{
         },
         controls: {
             display: 'flex',
+            flexDirection: isMobile ? 'column' : 'row',
             gap: '16px',
             marginTop: '20px',
             alignItems: 'center',
@@ -1511,7 +1562,7 @@ const Recorder: React.FC<{
             <p style={recorderStyles.statusText}>{status}</p>
             {errorMessage && <p style={recorderStyles.errorText}>{errorMessage}</p>}
              <div style={recorderStyles.controls}>
-                {(platform === 'macos' || platform === 'windows') && (
+                {!isMobile && (
                     <button style={recorderStyles.controlButton} onClick={onTogglePiP} disabled={!isRecording && !isPiP}>
                         {t('toggleMiniView')}
                     </button>
@@ -1533,7 +1584,8 @@ const SessionsList: React.FC<{
     sessions: Session[];
     onSelectSession: (session: Session) => void;
     onDeleteSession: (sessionId: string) => void;
-}> = ({ sessions, onSelectSession, onDeleteSession }) => {
+    isMobile: boolean;
+}> = ({ sessions, onSelectSession, onDeleteSession, isMobile }) => {
     
     const listStyles: { [key: string]: CSSProperties } = {
         container: {
@@ -1564,7 +1616,7 @@ const SessionsList: React.FC<{
     return (
         <div style={listStyles.container}>
             {sessions.map(session => (
-                <SessionItem key={session.id} session={session} onSelect={onSelectSession} onDelete={onDeleteSession} />
+                <SessionItem key={session.id} session={session} onSelect={onSelectSession} onDelete={onDeleteSession} isMobile={isMobile} />
             ))}
         </div>
     );
@@ -1574,7 +1626,8 @@ const SessionItem: React.FC<{
     session: Session;
     onSelect: (session: Session) => void;
     onDelete: (sessionId: string) => void;
-}> = ({ session, onSelect, onDelete }) => {
+    isMobile: boolean;
+}> = ({ session, onSelect, onDelete, isMobile }) => {
     
     const [confirmDelete, setConfirmDelete] = useState(false);
 
@@ -1591,7 +1644,7 @@ const SessionItem: React.FC<{
     const itemStyles: { [key: string]: CSSProperties } = {
         card: {
             backgroundColor: '#1E1E1E',
-            padding: '20px',
+            padding: isMobile ? '16px' : '20px',
             borderRadius: '12px',
             cursor: 'pointer',
             transition: 'transform 0.2s, box-shadow 0.2s',
@@ -1599,7 +1652,7 @@ const SessionItem: React.FC<{
         },
         title: {
             margin: '0 0 8px 0',
-            fontSize: '1.2rem',
+            fontSize: isMobile ? '1.1rem' : '1.2rem',
             fontWeight: 600,
             color: '#00A99D'
         },
@@ -1616,6 +1669,7 @@ const SessionItem: React.FC<{
             display: '-webkit-box',
             WebkitLineClamp: 2,
             WebkitBoxOrient: 'vertical',
+            fontSize: isMobile ? '0.9rem' : '1rem',
         },
         actions: {
             marginTop: '16px',
@@ -1654,7 +1708,8 @@ const SessionDetail: React.FC<{
     onRenameSpeaker: (speakerId: string, newName: string) => void;
     editingSpeaker: EditingSpeaker | null;
     onSetEditingSpeaker: (speakerId: string) => void;
-}> = ({ session, onBack, onAction, user, onRenameSpeaker, editingSpeaker, onSetEditingSpeaker }) => {
+    isMobile: boolean;
+}> = ({ session, onBack, onAction, user, onRenameSpeaker, editingSpeaker, onSetEditingSpeaker, isMobile }) => {
 
     const [copied, setCopied] = useState(false);
 
@@ -1702,7 +1757,9 @@ const SessionDetail: React.FC<{
         header: {
             display: 'flex',
             justifyContent: 'space-between',
-            alignItems: 'center'
+            alignItems: 'center',
+            flexWrap: 'wrap',
+            gap: '12px'
         },
         backButton: { background: 'none', border: '1px solid #444', color: 'white', padding: '10px 16px', borderRadius: '8px', cursor: 'pointer' },
         exportButtons: { display: 'flex', gap: '12px' },
@@ -1728,10 +1785,10 @@ const SessionDetail: React.FC<{
             <div style={detailStyles.header}>
                 <button style={detailStyles.backButton} onClick={onBack}>&larr; {t('backToList')}</button>
                 <div style={detailStyles.exportButtons}>
-                    <button style={styles.button} onClick={copyMarkdown}>
+                    <button style={{...styles.button, ...(isMobile && { padding: '8px 12px', fontSize: '0.9rem' })}} onClick={copyMarkdown}>
                         {copied ? t('copiedSuccess') : t('copyMarkdown')}
                     </button>
-                    <button style={{...styles.button, backgroundColor: '#444'}} onClick={downloadMarkdown}>{t('downloadMarkdown')}</button>
+                    <button style={{...styles.button, backgroundColor: '#444', ...(isMobile && { padding: '8px 12px', fontSize: '0.9rem' })}} onClick={downloadMarkdown}>{t('downloadMarkdown')}</button>
                 </div>
             </div>
             
@@ -1752,9 +1809,9 @@ const SessionDetail: React.FC<{
             <Accordion title={t('actionItemsHeader')} defaultOpen>
                 <ul style={{ listStyle: 'none', padding: 0 }}>
                     {session.results.actionItems.map((item, index) => (
-                        <li key={index} style={{ marginBottom: '12px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                            <span>- {item}</span>
-                            <button style={{ ...styles.button, fontSize: '0.9rem', padding: '8px 16px' }} onClick={() => onAction({ type: 'auto', sourceItem: item })}>
+                        <li key={index} style={{ marginBottom: '12px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '12px' }}>
+                            <span style={{flex: 1}}>- {item}</span>
+                            <button style={{ ...styles.button, fontSize: '0.9rem', padding: '8px 16px', flexShrink: 0 }} onClick={() => onAction({ type: 'auto', sourceItem: item })}>
                                 {t('takeAction')}
                             </button>
                         </li>
