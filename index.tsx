@@ -1,8 +1,17 @@
 
+
 import React, { useState, useRef, CSSProperties, useEffect, useCallback } from 'react';
 import { createRoot } from 'react-dom/client';
 import { GoogleGenAI, Type, FunctionDeclaration } from "@google/genai";
 import { marked } from 'marked';
+import { jwtDecode } from 'jwt-decode';
+
+// --- Type Declarations ---
+declare global {
+  interface Window {
+    google?: any;
+  }
+}
 
 // --- Gemini API Initialization ---
 const ai = new GoogleGenAI({ apiKey: process.env.API_KEY as string });
@@ -14,7 +23,7 @@ type MeetingResults = { transcript: string; summary: string; actionItems: string
 type MeetingMetadata = { title: string; date: string; location: string; mapUrl: string; };
 type Session = { id: string; metadata: MeetingMetadata; results: MeetingResults; speakers: Record<string, string>; };
 type ActionModalData = { type: string; args?: any; sourceItem?: string; };
-type User = { id: string; name: string; email: string; };
+type User = { id: string; name: string; email: string; picture?: string; };
 type EditingSpeaker = { sessionId: string; speakerId: string };
 type ActiveTab = 'record' | 'sessions';
 
@@ -41,10 +50,12 @@ const dbService = {
         const userJson = localStorage.getItem('verbatim_user');
         return userJson ? JSON.parse(userJson) : null;
     },
-    createUser: async (name: string, email: string): Promise<User> => {
-        const user = { id: `user_${Date.now()}`, name, email };
+    saveUser: async (user: User): Promise<User> => {
         localStorage.setItem('verbatim_user', JSON.stringify(user));
         return user;
+    },
+    logout: async (): Promise<void> => {
+        localStorage.removeItem('verbatim_user');
     },
     getSessions: async (userId: string): Promise<Session[]> => {
         const sessionsJson = localStorage.getItem(`verbatim_sessions_${userId}`);
@@ -158,15 +169,8 @@ const translations = {
             'Offline PWA Functionality',
             'Audio Source Selection',
         ],
-        consentTitle: 'Important Notice',
-        consentInternalUse: 'I acknowledge this application is for internal Impactory Institute use only.',
-        consentNoCopy: 'I agree not to copy or distribute this application without permission.',
-        consentContinue: 'Accept & Continue',
-        loginTitle: 'Create Your Account',
-        loginSubtitle: 'To begin, create a free account to save and manage your sessions.',
-        nameLabel: 'Full Name',
-        emailLabel: 'Email',
-        continueButton: 'Continue',
+        loginTitle: 'Welcome to Verbatim',
+        loginSubtitle: 'Sign in with Google to save and manage your sessions.',
         faqLink: 'FAQ',
         faqTitle: 'Frequently Asked Questions',
         logout: 'Logout',
@@ -181,7 +185,7 @@ const translations = {
             },
             {
                 q: 'How do I start a new recording?',
-                a: 'From the "Record" tab, tap the large microphone button. If it\'s your first time, you\'ll be asked to create an account. Then, you\'ll be prompted to select your preferred microphone. Once you click "Start," the recording will begin immediately.',
+                a: 'First, you\'ll need to sign in with your Google account. After signing in, navigate to the "Record" tab and tap the large microphone button. You\'ll then be prompted to select your preferred microphone. Once you click "Start," the recording will begin immediately.',
             },
             {
                 q: 'Can Verbatim understand different languages in the same meeting?',
@@ -220,17 +224,17 @@ const translations = {
         startRecording: '🎤 Nueva Sesión',
         stopRecording: '⏹️ Detener',
         analyzing: 'Analizando...',
-        micPermissionError: 'No se pudo iniciar la grabación. Por favor, concede permisos para el micrófono.',
-        processingError: 'No se pudo procesar el audio. Esto puede ocurrir por una mala conexión de red, una grabación muy corta o si el audio está en silencio. Por favor, inténtalo de nuevo.',
-        offlineError: 'El análisis requiere una conexión a internet. Por favor, conéctate y vuelve a intentarlo.',
-        recordingTooShortError: 'La grabación es demasiado corta para analizar. Por favor, graba durante al menos 2 segundos.',
+        micPermissionError: 'No se pudo iniciar la grabación. Por favor, concede permisos de micrófono.',
+        processingError: 'Error al procesar el audio. Esto puede ocurrir por una mala conexión de red, una grabación muy corta o si el audio está en silencio. Por favor, inténtalo de nuevo.',
+        offlineError: 'El análisis requiere una conexión a internet. Por favor, conéctate e inténtalo de nuevo.',
+        recordingTooShortError: 'La grabación es demasiado corta para analizar. Graba durante al menos 2 segundos.',
         transcriptHeader: '📋 Transcripción',
         summaryHeader: '✨ Resumen Clave',
         actionItemsHeader: '📌 Puntos de Acción',
         noTranscript: 'No se pudo extraer la transcripción.',
         noSummary: 'No se pudo extraer el resumen.',
         takeAction: 'Tomar Acción ✨',
-        noActionDetermined: 'No se pudo determinar una acción específica para este ítem. Puedes gestionarlo manually.',
+        noActionDetermined: 'No se pudo determinar una acción específica para este item. Puedes gestionarlo manualmente.',
         createCalendarEvent: 'Crear Evento en Google Calendar',
         titleLabel: 'Título:',
         descriptionLabel: 'Descripción:',
@@ -241,11 +245,11 @@ const translations = {
         toLabel: 'Para:',
         subjectLabel: 'Asunto:',
         bodyLabel: 'Cuerpo:',
-        openInEmailApp: 'Abrir en Correo',
+        openInEmailApp: 'Abrir en App de Correo',
         draftInvoiceEmail: 'Redactar Correo de Factura',
         recipientNameLabel: 'Nombre del Destinatario:',
         amountLabel: 'Monto:',
-        invoiceEmailBody: 'Hola {recipientName},\n\nEsta es una factura para el siguiente artículo:\n- {itemDescription}\n\nMonto a pagar: {currencySymbol}{amount}\n\nSi tienes alguna pregunta, no dudes en contactarme.\n\nAtentamente,\n{userName}',
+        invoiceEmailBody: 'Hola {recipientName},\n\nEsta es una factura por el siguiente concepto:\n- {itemDescription}\n\nMonto a pagar: {currencySymbol}{amount}\n\nPor favor, avísame si tienes alguna pregunta.\n\nSaludos,\n{userName}',
         initiatePhoneCall: 'Iniciar Llamada',
         phoneNumberLabel: 'Número de Teléfono:',
         reasonLabel: 'Motivo:',
@@ -266,7 +270,7 @@ const translations = {
         locationUnavailable: 'Ubicación no disponible',
         gettingLocation: 'Obteniendo ubicación...',
         speakersHeader: '🗣️ Oradores',
-        renameSpeakerPrompt: 'Ingrese el nuevo nombre para',
+        renameSpeakerPrompt: 'Ingresa el nuevo nombre para',
         footerText: 'Para Uso Exclusivo del Impactory Institute',
         recentSessions: 'Sesiones Recientes',
         welcomeMessage: 'Bienvenido a Verbatim',
@@ -275,16 +279,16 @@ const translations = {
         deleteConfirmation: '¿Estás seguro de que quieres eliminar esta sesión? Esta acción no se puede deshacer.',
         searchPlaceholder: 'Buscar sesiones...',
         toggleMiniView: 'Picture-in-Picture',
-        keepAwake: 'Mantener Pantalla Encendida',
+        keepAwake: 'Mantener Pantalla Activa',
         keepAwakeInfo: 'Evita que la pantalla se apague durante una sesión de grabación.',
         backToList: 'Volver a Sesiones',
-        recordPhoneCallTitle: '¿Grabando una llamada telefónica?',
-        recordPhoneCallInstruction: 'Para la mejor calidad, conecta tus auriculares. También puedes usar el altavoz de tu teléfono. Toca el botón de grabar para comenzar.',
+        recordPhoneCallTitle: '¿Grabando una llamada?',
+        recordPhoneCallInstruction: 'Para la mejor calidad, conecta tus auriculares. También puedes usar el altavoz de tu teléfono. Toca el botón de grabar para empezar.',
         selectAudioDeviceTitle: 'Seleccionar Fuente de Audio',
-        selectAudioDeviceInstruction: 'Elige el micrófono que deseas utilizar para la grabación.',
-        start: 'Comenzar',
+        selectAudioDeviceInstruction: 'Elige el micrófono que quieres usar para la grabación.',
+        start: 'Iniciar',
         cancel: 'Cancelar',
-        analysisPrompt: 'Eres un experto asistente de reuniones multilingüe. El idioma preferido del usuario es español. Analiza el siguiente audio de la reunión, que puede contener varios idiomas hablados. Tu tarea es procesar este audio multilingüe y generar todo el resultado exclusivamente en español. Proporciona un resumen conciso, una lista de puntos de acción y una transcripción completa con etiquetas de orador (p. ej., Orador 1, Orador 2). En el resumen, presta especial atención y enumera claramente cualquier cifra financiera, presupuesto o costo mencionado. Identifica a todos los oradores únicos. Todo el texto de salida (resumen, puntos de acción, transcripción) DEBE ser traducido y escrito en español. Formatea la salida como un objeto JSON con las claves: "summary", "actionItems" (un array de strings), "transcript" (un string con saltos de línea y etiquetas de orador), y "speakers" (un array de etiquetas de orador identificadas como ["Orador 1", "Orador 2"]). No incluyas el envoltorio de markdown para JSON.',
+        analysisPrompt: 'Eres un asistente de reuniones multilingüe experto. El idioma preferido del usuario es español. Analiza el siguiente audio de la reunión, que puede contener varios idiomas hablados. Tu tarea es procesar este audio multilingüe y generar todos los resultados exclusivamente en español. Proporciona un resumen conciso, una lista de puntos de acción y una transcripción completa con etiquetas de orador (por ejemplo, Orador 1, Orador 2). En el resumen, presta especial atención y enumera claramente cualquier cifra financiera, presupuesto o costo mencionado. Identifica a todos los oradores únicos. Todo el texto de salida (resumen, puntos de acción, transcripción) DEBE ser traducido y escrito en español. Formatea la salida como un objeto JSON con las claves: "summary", "actionItems" (un array de strings), "transcript" (un string con saltos de línea y etiquetas de orador), y "speakers" (un array de etiquetas de oradores identificados como ["Orador 1", "Orador 2"]). No incluyas el envoltorio de markdown JSON.',
         actionPrompt: 'Eres un asistente inteligente. Basado en el contexto completo de una reunión y un punto de acción específico, llama a la herramienta más apropiada para ayudar al usuario a completarlo. El idioma del usuario es español. Título de la reunión: "{meetingTitle}". Fecha de la reunión: "{meetingDate}". Resumen de la reunión: "{meetingSummary}". Punto de acción: "{actionItemText}". Asegúrate de que todo el contenido generado, como asuntos de correo o descripciones de eventos, sea relevante para el contexto de la reunión.',
         featureShowcase: 'Funcionalidades de Verbatim',
         createdBy: 'Creado por',
@@ -293,62 +297,55 @@ const translations = {
         dedication: 'Dedicado con amor a mi familia, a todas las mamás ocupadas y al creador. ❤️',
         featureList: [
             'Análisis IA Multilingüe',
-            'Resumen y Acciones Automáticas',
+            'Resumen y Puntos de Acción Automáticos',
             'Transcripción Completa con Oradores',
-            'Acciones en Un Clic (Calendar, Gmail, Docs)',
+            'Acciones de Un Clic (Calendar, Gmail, Docs)',
             'Exportar y Copiar en Markdown',
             'Mini Vista Picture-in-Picture',
             'Funcionalidad PWA Offline',
             'Selección de Fuente de Audio',
         ],
-        consentTitle: 'Aviso Importante',
-        consentInternalUse: 'Reconozco que esta aplicación es para uso interno exclusivo del Impactory Institute.',
-        consentNoCopy: 'Acepto no copiar ni distribuir esta aplicación sin permiso.',
-        consentContinue: 'Aceptar y Continuar',
-        loginTitle: 'Crear Cuenta',
-        loginSubtitle: 'Para comenzar, crea una cuenta gratuita para guardar y gestionar tus sesiones.',
-        nameLabel: 'Nombre Completo',
-        emailLabel: 'Correo Electrónico',
-        continueButton: 'Continuar',
-        faqLink: 'FAQ',
+        loginTitle: 'Bienvenido a Verbatim',
+        loginSubtitle: 'Inicia sesión con Google para guardar y gestionar tus sesiones.',
+        faqLink: 'Preguntas Frecuentes',
         faqTitle: 'Preguntas Frecuentes',
         logout: 'Cerrar Sesión',
         faq: [
              {
                 q: '¿Qué hay de nuevo en esta versión (Beta v1.3)?',
-                a: 'Esta versión mejora la inteligencia de la IA, especialmente en temas financieros. La IA ahora identifica y resalta mejor las cifras monetarias en el resumen. También introduce una nueva acción de un solo clic "Redactar Factura" para tareas relevantes, agilizando y facilitando los seguimientos financieros.',
+                a: 'Esta versión mejora la inteligencia de la IA, particularmente en temas financieros. La IA ahora identifica y resalta mejor las cifras monetarias en el resumen. También introduce una nueva acción de un clic "Redactar Factura" para tareas relevantes, haciendo los seguimientos financieros más rápidos y fáciles.',
             },
             {
                 q: '¿Cómo maneja la aplicación las discusiones sobre dinero?',
-                a: 'La IA está entrenada para reconocer conversaciones que involucran finanzas. Resaltará automáticamente cualquier cifra específica, presupuesto o costo mencionado durante la reunión en la sección "Resumen Clave". Si un punto de acción implica facturar a un cliente (p. ej., "Enviar una factura al Cliente X por $500"), el botón "Tomar Acción" ofrecerá redactar un correo de factura por ti, rellenando previamente el destinatario, el monto y la descripción.',
+                a: 'La IA está entrenada para reconocer conversaciones que involucran finanzas. Resaltará automáticamente cualquier cifra específica, presupuesto o costo mencionado durante la reunión en la sección "Resumen Clave". Si un punto de acción implica facturar a un cliente (por ejemplo, "Enviar una factura al Cliente X por $500"), el botón "Tomar Acción" ofrecerá redactar un correo de factura por ti, rellenando previamente el destinatario, el monto y la descripción.',
             },
             {
                 q: '¿Cómo inicio una nueva grabación?',
-                a: 'Desde la pestaña "Grabar", toca el botón grande del micrófono. Si es tu primera vez, se te pedirá que crees una cuenta. Luego, se te pedirá que selecciones tu micrófono preferido. Una vez que hagas clic en "Comenzar", la grabación se iniciará de inmediato.',
+                a: 'Primero, necesitarás iniciar sesión con tu cuenta de Google. Después de iniciar sesión, ve a la pestaña "Grabar" y toca el botón grande del micrófono. Luego se te pedirá que selecciones tu micrófono preferido. Una vez que hagas clic en "Iniciar", la grabación comenzará de inmediato.',
             },
             {
                 q: '¿Puede Verbatim entender diferentes idiomas en la misma reunión?',
-                a: '¡Sí! Verbatim cuenta con una IA multilingüe que puede procesar audio que contenga varios idiomas. Todos los resultados finales, incluyendo el resumen, los puntos de acción y la transcripción, se traducirán y presentarán en el idioma predeterminado de tu navegador (inglés, español o chino).',
+                a: '¡Sí! Verbatim está impulsado por una IA multilingüe que puede procesar audio que contiene múltiples idiomas. Todos los resultados finales, incluyendo el resumen, los puntos de acción y la transcripción, serán traducidos y presentados en el idioma predeterminado de tu navegador (inglés, español o chino).',
             },
             {
                 q: '¿Cómo se identifican los oradores y puedo cambiar sus nombres?',
-                a: 'La IA distingue automáticamente entre diferentes oradores y los etiqueta como "Orador 1", etc. Después del análisis, haz clic en el ícono de lápiz (✏️) junto al nombre de un orador. El nombre se convertirá en un campo editable. Escribe el nuevo nombre y presiona Enter o haz clic fuera para guardar. Esto actualizará el nombre en toda la transcripción.',
+                a: 'La IA distingue automáticamente entre diferentes oradores y los etiqueta como "Orador 1", etc. Después del análisis, haz clic en el ícono del lápiz (✏️) junto al nombre de un orador. El nombre se convierte en un campo editable. Escribe el nuevo nombre y presiona Enter o haz clic fuera para guardar. Esto actualiza el nombre en toda la transcripción.',
             },
             {
-                q: '¿Qué son las "Acciones en Un Clic"?',
+                q: '¿Qué son las "Acciones de Un Clic"?',
                 a: 'Para cada punto de acción identificado por la IA, puedes hacer clic en el botón "Tomar Acción ✨". La IA determinará la mejor herramienta para la tarea (como crear un evento de calendario, redactar un correo electrónico o iniciar un documento) y rellenará previamente la información necesaria por ti.',
             },
             {
                 q: '¿Cómo puedo usar los controles de grabación mientras estoy en otra ventana?',
-                a: 'Mientras grabas en un navegador de escritorio, haz clic en el botón "Alternar Mini Vista". Esto abrirá una pequeña ventana Picture-in-Picture con un temporizador y un botón de "Detener", que permanecerá encima de tus otras ventanas para que puedas controlar fácilmente la grabación.',
+                a: 'Mientras grabas en un navegador de escritorio, haz clic en el botón "Activar Mini Vista". Esto abrirá una pequeña ventana Picture-in-Picture con un temporizador y un botón de "Detener", que permanece encima de tus otras ventanas para que puedas controlar fácilmente la grabación.',
             },
             {
                 q: '¿La aplicación funciona sin conexión?',
-                a: 'Sí. Verbatim es una Aplicación Web Progresiva (PWA). Después de tu primera visita, puedes instalarla en tu dispositivo para una experiencia similar a la de una aplicación. Puedes ver las sesiones pasadas incluso sin conexión a internet. Sin embargo, analizar una nueva grabación requiere una conexión a internet para comunicarse con la IA.',
+                a: 'Sí. Verbatim es una Aplicación Web Progresiva (PWA). Después de tu primera visita, puedes instalarla en tu dispositivo para una experiencia similar a la de una aplicación. Puedes ver sesiones pasadas incluso sin conexión a internet. Sin embargo, analizar una nueva grabación requiere una conexión a internet para comunicarse con la IA.',
             },
             {
                 q: '¿Dónde se almacenan mis datos?',
-                a: 'La información de tu cuenta y todos los datos de la sesión se almacenan en una base de datos simulada en la nube que utiliza el almacenamiento local de tu navegador para persistencia. Esto te permite acceder a tus datos entre recargas del navegador. Ningún dato se envía o almacena en ningún servidor externo, excepto para el procesamiento temporal del audio por la API de Gemini durante el análisis.',
+                a: 'La información de tu cuenta y todos los datos de la sesión se almacenan en una base de datos simulada en la nube que utiliza el almacenamiento local de tu navegador para persistencia. Esto te permite acceder a tus datos a través de las actualizaciones del navegador. Ningún dato se envía o almacena en ningún servidor externo, excepto el procesamiento temporal del audio por la API de Gemini durante el análisis.',
             },
         ],
         sessions: 'Sesiones',
@@ -362,179 +359,172 @@ const translations = {
         welcomeUser: '欢迎，{name}',
         startRecording: '🎤 新建会话',
         stopRecording: '⏹️ 停止',
-        analyzing: '正在分析...',
+        analyzing: '分析中...',
         micPermissionError: '无法开始录音。请授予麦克风权限。',
-        processingError: '处理音频失败。这可能是由于网络连接不佳、录音时间过短或音频无声。请重试。',
-        offlineError: '分析需要网络连接。请连接网络后重试。',
-        recordingTooShortError: '录音时间太短，无法分析。请至少录制2秒。',
-        transcriptHeader: '📋 文字记录',
-        summaryHeader: '✨ 核心摘要',
+        processingError: '处理音频失败。这可能是由于网络连接不佳、录音时间太短或音频无声。请重试。',
+        offlineError: '分析需要互联网连接。请连接后重试。',
+        recordingTooShortError: '录音太短，无法分析。请录制至少2秒。',
+        transcriptHeader: '📋 文本记录',
+        summaryHeader: '✨ 关键摘要',
         actionItemsHeader: '📌 行动项',
-        noTranscript: '无法提取文字记录。',
+        noTranscript: '无法提取文本记录。',
         noSummary: '无法提取摘要。',
-        takeAction: '执行操作 ✨',
-        noActionDetermined: '无法为此项目确定具体操作。请手动处理。',
-        createCalendarEvent: '创建谷歌日历活动',
+        takeAction: '采取行动 ✨',
+        noActionDetermined: '无法确定此项目的具体行动。您可以手动处理。',
+        createCalendarEvent: '创建谷歌日历事件',
         titleLabel: '标题:',
         descriptionLabel: '描述:',
         dateLabel: '日期:',
         timeLabel: '时间:',
         openInCalendar: '在谷歌日历中打开',
-        draftEmail: '草拟邮件',
+        draftEmail: '起草电子邮件',
         toLabel: '收件人:',
         subjectLabel: '主题:',
         bodyLabel: '正文:',
-        openInEmailApp: '在邮件应用中打开',
-        draftInvoiceEmail: '草拟发票邮件',
+        openInEmailApp: '在电子邮件应用中打开',
+        draftInvoiceEmail: '起草发票邮件',
         recipientNameLabel: '收件人姓名:',
         amountLabel: '金额:',
-        invoiceEmailBody: '您好 {recipientName}，\n\n这是关于以下项目的发票：\n- {itemDescription}\n\n应付金额：{currencySymbol}{amount}\n\n如果您有任何问题，请随时与我联系。\n\n此致，\n{userName}',
-        initiatePhoneCall: '拨打电话',
+        invoiceEmailBody: '您好 {recipientName}，\n\n这是一张关于以下项目的发票：\n- {itemDescription}\n\n应付金额：{currencySymbol}{amount}\n\n如果您有任何问题，请随时告诉我。\n\n顺祝商祺，\n{userName}',
+        initiatePhoneCall: '发起电话呼叫',
         phoneNumberLabel: '电话号码:',
-        reasonLabel: '呼叫原因:',
+        reasonLabel: '事由:',
         callNow: '立即呼叫',
         createDocument: '创建谷歌文档',
         createDocInfo: '将打开一个新标签页来创建谷歌文档。下面的内容将被复制到您的剪贴板以便粘贴。',
         suggestedTitle: '建议标题:',
         suggestedContent: '建议内容:',
-        openGoogleDocs: '打开谷歌文档并复制代码',
+        openGoogleDocs: '打开谷歌文档并复制内容',
         unknownAction: '未知操作',
         actionError: '确定操作时发生错误。请重试。',
-exportResults: '导出结果',
+        exportResults: '导出结果',
         copyMarkdown: '复制为 Markdown',
-        downloadMarkdown: '下载为 .md 文件',
+        downloadMarkdown: '下载为 .md',
         copiedSuccess: '已复制到剪贴板！',
-        meetingTitle: '会议记录',
+        meetingTitle: '会议纪要',
         meetingLocation: '地点:',
         locationUnavailable: '地点不可用',
         gettingLocation: '正在获取地点...',
         speakersHeader: '🗣️ 发言人',
-        renameSpeakerPrompt: '输入新名称',
+        renameSpeakerPrompt: '为...输入新名称',
         footerText: '仅供 Impactory Institute 使用',
         recentSessions: '最近的会话',
         welcomeMessage: '欢迎使用 Verbatim',
-        welcomeSubtext: '您录制的会话将显示在此处。点击麦克风即可开始。',
+        welcomeSubtext: '您录制的会话将出现在这里。点击麦克风开始。',
         deleteSession: '删除会话？',
         deleteConfirmation: '您确定要删除此会话吗？此操作无法撤销。',
         searchPlaceholder: '搜索会话...',
         toggleMiniView: '画中画',
         keepAwake: '保持屏幕常亮',
-        keepAwakeInfo: '在录音期间防止屏幕关闭。',
+        keepAwakeInfo: '在录音会话期间防止屏幕关闭。',
         backToList: '返回会话列表',
         recordPhoneCallTitle: '正在录制电话通话？',
-        recordPhoneCallInstruction: '为获得最佳音质，请连接您的耳机。您也可以使用手机的扬声器。点击录音按钮开始。',
+        recordPhoneCallInstruction: '为获得最佳音质，请连接耳机。您也可以使用手机的扬声器。点击录音按钮开始。',
         selectAudioDeviceTitle: '选择音频源',
-        selectAudioDeviceInstruction: '请选择您要用于录音的麦克风。',
+        selectAudioDeviceInstruction: '选择您想用于录音的麦克风。',
         start: '开始',
         cancel: '取消',
-        analysisPrompt: '你是一位专业的多语言会议助理。用户的首选语言是简体中文。请分析接下来的会议音频，其中可能包含多种口语语言。你的任务是处理这段多语言音频，并仅以简体中文生成所有输出。请提供简明的摘要、行动项列表，以及带有发言人标签（例如，发言人1，发言人2）的完整文字记录。在摘要中，请特别注意并清晰地列出任何提及的财务数据、预算或成本。识别所有独立发言人。所有输出文本（摘要、行动项、文字记录）必须翻译成并以简体中文书写。将输出格式化为 JSON 对象，键为："summary"、"actionItems"（字符串数组）、"transcript"（带换行符和发言人标签的字符串），以及 "speakers"（已识别的发言人标签数组，如 ["发言人 1", "发言人 2"]）。不要包含 JSON 的 markdown 包装。',
-        actionPrompt: '你是一个智能助理。请根据会议的完整背景和具体的行动项，调用最合适的工具来帮助用户完成它。用户的语言是简体中文。会议标题：“{meetingTitle}”。会议日期：“{meetingDate}”。会议摘要：“{meetingSummary}”。行动项：“{actionItemText}”。确保所有生成的内容（如邮件主题或活动描述）都与会议背景相关。',
+        analysisPrompt: '你是一位专业的多语言会议助理。用户的首选语言是中文。请分析以下可能包含多种口语的会议音频。你的任务是处理这个多语言音频，并只用中文生成所有输出。提供一个简洁的摘要，一个行动项目列表，以及一个带有发言者标签（例如，发言人1，发言人2）的完整文字记录。在摘要中，要特别注意并清楚地列出任何提到的财务数字、预算或成本。识别所有独特的发言者。所有输出文本（摘要、行动项目、文字记录）必须翻译成中文书写。将输出格式化为一个JSON对象，键为："summary"、"actionItems"（字符串数组）、"transcript"（带有换行符和发言者标签的字符串）和 "speakers"（已识别的发言者标签数组，如["发言人1", "发言人2"]）。不要包含JSON markdown包装。',
+        actionPrompt: '你是一个智能助理。根据会议的全部背景和一个具体的行动项目，调用最合适的工具来帮助用户完成它。用户的语言是中文。会议标题：“{meetingTitle}”。会议日期：“{meetingDate}”。会议摘要：“{meetingSummary}”。行动项目：“{actionItemText}”。确保所有生成的内容，如电子邮件主题或事件描述，都与会议背景相关。',
         featureShowcase: 'Verbatim 功能',
         createdBy: '创建者',
         creatorName: 'Simon Luke',
         creatorEmail: 'simon.luke@impactoryinstitute.com',
         dedication: ' lovingly dedicated to my family, all the busy moms out there, and the creator. ❤️',
         featureList: [
-            '多语言AI分析',
+            '多语言 AI 分析',
             '自动摘要和行动项',
-            '带发言人标签的完整文字记录',
+            '带发言人标签的完整转录',
             '一键操作（日历、Gmail、文档）',
             'Markdown 导出和复制',
             '画中画迷你视图',
             '离线 PWA 功能',
             '音频源选择',
         ],
-        consentTitle: '重要通知',
-        consentInternalUse: '我确认此应用程序仅供 Impactory Institute 内部使用。',
-        consentNoCopy: '我同意未经许可不复制或分发此应用程序。',
-        consentContinue: '接受并继续',
-        loginTitle: '创建您的账户',
-        loginSubtitle: '要开始，请创建一个免费账户以保存和管理您的会话。',
-        nameLabel: '全名',
-        emailLabel: '电子邮件',
-        continueButton: '继续',
+        loginTitle: '欢迎使用 Verbatim',
+        loginSubtitle: '使用 Google 登录以保存和管理您的会话。',
         faqLink: '常见问题',
         faqTitle: '常见问题解答',
         logout: '登出',
         faq: [
              {
                 q: '这个版本（Beta v1.3）有什么新功能？',
-                a: '此版本增强了 AI 的智能，特别是在财务主题方面。AI 现在能更好地识别和突出摘要中的货币数字。它还为相关任务引入了新的一键操作“草拟发票邮件”，使财务跟进更快、更容易。',
+                a: '此版本增强了AI的智能，特别是在财务主题方面。AI现在能更好地识别和突出摘要中的货币数字。它还针对相关任务引入了新的“起草发票”一键操作，使财务后续工作更快更容易。',
             },
             {
-                q: '应用如何处理关于金钱的讨论？',
-                a: 'AI 经过训练，可以识别涉及财务的对话。它会自动在“核心摘要”部分突出显示会议期间提到的任何具体数字、预算或成本。如果行动项涉及向客户开具账单（例如，“向客户 X 发送 500 美元的发票”），“执行操作”按钮将提供为您草拟发票邮件的选项，并预先填写收件人、金额和描述。',
+                q: '该应用程序如何处理关于金钱的讨论？',
+                a: 'AI经过训练，能够识别涉及财务的对话。它会自动在“关键摘要”部分突出显示会议期间提到的任何具体数字、预算或成本。如果一个行动项目涉及向客户开具账单（例如，“向客户X发送一张500美元的发票”），“采取行动”按钮将为您提供起草发票邮件的选项，预先填写收件人、金额和描述。',
             },
             {
-                q: '如何开始新的录音？',
-                a: '在“录音”选项卡中，点击大的麦克风按钮。如果是您第一次使用，系统会要求您创建一个帐户。然后，您将被提示选择您偏好的麦克风。点击“开始”后，录音将立即开始。',
+                q: '我如何开始新的录音？',
+                a: '首先，您需要使用您的Google帐户登录。登录后，导航到“录制”选项卡并点击大的麦克风按钮。然后会提示您选择您喜欢的麦克风。一旦您点击“开始”，录音将立即开始。',
             },
             {
-                q: 'Verbatim 能否在同一次会议中理解不同的语言？',
-                a: '是的！Verbatim 是由一个多语言人工智能驱动，可以处理包含多种语言的音频。所有最终输出，包括摘要、行动项和文字记录，都将被翻译并以您浏览器的默认语言（英语、西班牙语或中文）呈现。',
+                q: 'Verbatim 能在同一次会议中理解不同的语言吗？',
+                a: '是的！Verbatim 由一个多语言AI驱动，可以处理包含多种语言的音频。所有最终输出，包括摘要、行动项目和文字记录，都将被翻译并以您浏览器的默认语言（英语、西班牙语或中文）呈现。',
             },
             {
-                q: '发言人是如何被识别的？我可以更改他们的名字吗？',
-                a: '人工智能会自动区分不同的发言人，并将他们标记为“发言人 1”等。分析后，点击发言人姓名旁边的铅笔图标（✏️）。姓名将变为可编辑字段。输入新名称后按 Enter 键或点击其他地方即可保存。这将在整个文字记录中更新该姓名。',
+                q: '发言者是如何被识别的，我可以更改他们的名字吗？',
+                a: 'AI会自动区分不同的发言者，并将他们标记为“发言人1”等。分析后，点击发言者姓名旁边的铅笔图标（✏️）。姓名将变为可编辑字段。输入新名称后按Enter键或点击别处即可保存。这会更新整个文字记录中的姓名。',
             },
             {
                 q: '什么是“一键操作”？',
-                a: '对于人工智能识别的每个行动项，您可以点击“执行操作 ✨”按钮。人工智能将确定最适合该任务的工具（例如创建日历活动、草拟电子邮件或启动文档），并为您预填必要的信息。',
+                a: '对于AI识别的每个行动项目，您可以点击“采取行动 ✨”按钮。AI将确定任务的最佳工具（如创建日历事件、起草电子邮件或启动文档），并为您预填必要的信息。',
             },
             {
-                q: '在另一个窗口时，如何使用录音控制？',
-                a: '在桌面浏览器上录音时，点击“切换迷你视图”按钮。这将打开一个小的画中画窗口，其中包含一个计时器和一个“停止”按钮，该窗口会保持在其他窗口的顶部，方便您轻松控制录音。',
+                q: '在另一个窗口中时，我如何使用录音控制？',
+                a: '在桌面浏览器上录音时，点击“切换迷你视图”按钮。这将打开一个小的画中画窗口，带有一个计时器和一个“停止”按钮，它会停留在您其他窗口的顶部，以便您可以轻松控制录音。',
             },
             {
-                q: '这个应用可以离线工作吗？',
-                a: '是的。Verbatim 是一个渐进式网络应用（PWA）。首次访问后，您可以将其安装在您的设备上，以获得类似应用的体验。即使没有网络连接，您也可以查看过去的会话。但是，分析新的录音需要网络连接才能与人工智能通信。',
+                q: '该应用可以离线工作吗？',
+                a: '是的。Verbatim 是一个渐进式网络应用（PWA）。首次访问后，您可以将其安装在您的设备上，以获得类似应用的体验。即使没有互联网连接，您也可以查看过去的会话。但是，分析新的录音需要互联网连接才能与AI通信。',
             },
             {
                 q: '我的数据存储在哪里？',
-                a: '您的帐户信息和所有会话数据都存储在一个模拟的云数据库中，该数据库使用您浏览器的本地存储来实现持久性。这使您可以在浏览器刷新后访问您的数据。除了在分析期间由 Gemini API 临时处理音频外，不会将任何数据发送到或存储在任何外部服务器上。',
+                a: '您的帐户信息和所有会话数据都存储在一个模拟的云数据库中，该数据库使用您浏览器的本地存储来实现持久性。这使您可以在浏览器刷新后访问您的数据。除了在分析期间由Gemini API临时处理音频外，不会将任何数据发送到或存储在任何外部服务器上。',
             },
         ],
         sessions: '会话',
-        record: '录音',
+        record: '录制',
         recording: '录音中...',
         tapToRecord: '点击开始录音',
     },
-     'zh-TW': {
+    'zh-TW': {
         title: 'Verbatim',
-        subtitle: '您的智慧會議儀表板。',
+        subtitle: '您的智能會議儀表板。',
         welcomeUser: '歡迎，{name}',
         startRecording: '🎤 新增會話',
         stopRecording: '⏹️ 停止',
         analyzing: '分析中...',
         micPermissionError: '無法開始錄音。請授予麥克風權限。',
-        processingError: '處理音訊失敗。這可能是由於網路連線不佳、錄音時間過短或音訊無聲。請重試。',
+        processingError: '處理音訊失敗。這可能是由於網路連線不佳、錄音時間太短或音訊無聲。請重試。',
         offlineError: '分析需要網路連線。請連線後重試。',
-        recordingTooShortError: '錄音時間太短，無法分析。請至少錄製2秒。',
+        recordingTooShortError: '錄音太短，無法分析。請錄製至少2秒。',
         transcriptHeader: '📋 文字記錄',
-        summaryHeader: '✨ 核心摘要',
+        summaryHeader: '✨ 關鍵摘要',
         actionItemsHeader: '📌 行動項',
         noTranscript: '無法擷取文字記錄。',
         noSummary: '無法擷取摘要。',
-        takeAction: '執行操作 ✨',
-        noActionDetermined: '無法為此項目確定具體操作。請手動處理。',
+        takeAction: '採取行動 ✨',
+        noActionDetermined: '無法確定此項目的具體行動。您可以手動處理。',
         createCalendarEvent: '建立 Google 日曆活動',
         titleLabel: '標題:',
         descriptionLabel: '描述:',
         dateLabel: '日期:',
         timeLabel: '時間:',
         openInCalendar: '在 Google 日曆中開啟',
-        draftEmail: '草擬郵件',
+        draftEmail: '草擬電子郵件',
         toLabel: '收件人:',
         subjectLabel: '主旨:',
         bodyLabel: '內文:',
-        openInEmailApp: '在郵件應用程式中開啟',
+        openInEmailApp: '在電子郵件應用程式中開啟',
         draftInvoiceEmail: '草擬發票郵件',
         recipientNameLabel: '收件人姓名:',
         amountLabel: '金額:',
-        invoiceEmailBody: '您好 {recipientName}，\n\n這是關於以下項目的發票：\n- {itemDescription}\n\n應付金額：{currencySymbol}{amount}\n\n如果您有任何問題，請隨時与我聯繫。\n\n此致，\n{userName}',
-        initiatePhoneCall: '撥打電話',
+        invoiceEmailBody: '您好 {recipientName}，\n\n這是一張關於以下項目的發票：\n- {itemDescription}\n\n應付金額：{currencySymbol}{amount}\n\n如果您有任何問題，請隨時告訴我。\n\n順頌商祺，\n{userName}',
+        initiatePhoneCall: '發起電話通話',
         phoneNumberLabel: '電話號碼:',
-        reasonLabel: '通話原因:',
+        reasonLabel: '事由:',
         callNow: '立即通話',
         createDocument: '建立 Google 文件',
         createDocInfo: '將開啟一個新分頁來建立 Google 文件。下面的內容將被複製到您的剪貼簿以便貼上。',
@@ -545,107 +535,103 @@ exportResults: '导出结果',
         actionError: '確定操作時發生錯誤。請重試。',
         exportResults: '匯出結果',
         copyMarkdown: '複製為 Markdown',
-        downloadMarkdown: '下載為 .md 檔案',
+        downloadMarkdown: '下載為 .md',
         copiedSuccess: '已複製到剪貼簿！',
         meetingTitle: '會議記錄',
         meetingLocation: '地點:',
         locationUnavailable: '地點不可用',
         gettingLocation: '正在取得地點...',
         speakersHeader: '🗣️ 發言人',
-        renameSpeakerPrompt: '輸入新名稱',
+        renameSpeakerPrompt: '為...輸入新名稱',
         footerText: '僅供 Impactory Institute 使用',
         recentSessions: '最近的會話',
         welcomeMessage: '歡迎使用 Verbatim',
-        welcomeSubtext: '您錄製的會話將顯示在此處。點擊麥克風即可開始。',
+        welcomeSubtext: '您錄製的會話將出現在這裡。點擊麥克風開始。',
         deleteSession: '刪除會話？',
-        deleteConfirmation: '您確定要刪除此會話嗎？此操作無法撤銷。',
+        deleteConfirmation: '您確定要刪除此會話嗎？此操作無法復原。',
         searchPlaceholder: '搜尋會話...',
         toggleMiniView: '子母畫面',
-        keepAwake: '保持螢幕常亮',
-        keepAwakeInfo: '在錄音期間防止螢幕關閉。',
+        keepAwake: '保持螢幕喚醒',
+        keepAwakeInfo: '在錄音會話期間防止螢幕關閉。',
         backToList: '返回會話列表',
         recordPhoneCallTitle: '正在錄製電話通話？',
-        recordPhoneCallInstruction: '為獲得最佳音質，請連接您的耳機。您也可以使用手機的揚声器。點擊錄音按鈕開始。',
-        selectAudioDeviceTitle: '選取音訊來源',
-        selectAudioDeviceInstruction: '請選擇您要用於錄音的麥克風。',
+        recordPhoneCallInstruction: '為獲得最佳音質，請連接耳機。您也可以使用手機的擴音器。點擊錄音按鈕開始。',
+        selectAudioDeviceTitle: '選擇音訊來源',
+        selectAudioDeviceInstruction: '選擇您想用於錄音的麥克風。',
         start: '開始',
         cancel: '取消',
-        analysisPrompt: '你是一位專業的多語言會議助理。使用者的首選語言是繁體中文。請分析接下來的會議音訊，其中可能包含多種口語語言。你的任務是處理這段多語言音訊，並僅以繁體中文產生所有輸出。請提供簡明的摘要、行動項列表，以及帶有發言人標籤（例如，發言人1，發言人2）的完整文字記錄。在摘要中，請特別注意並清晰地列出任何提及的財務數據、預算或成本。識別所有獨立發言人。所有輸出文字（摘要、行動項、文字記錄）必須翻譯成並以繁體中文書寫。將輸出格式化為 JSON 物件，鍵為："summary"、"actionItems"（字串陣列）、"transcript"（帶換行符和發言人標籤的字串），以及 "speakers"（已識別的發言人標籤陣列，如 ["發言人 1", "發言人 2"]）。不要包含 JSON 的 markdown 包裝。',
-        actionPrompt: '你是一個智慧助理。請根據會議的完整背景和具體的行動項，呼叫最合適的工具來幫助使用者完成它。使用者的語言是繁體中文。會議標題：「{meetingTitle}」。會議日期：「{meetingDate}」。會議摘要：「{meetingSummary}」。行動項：「{actionItemText}」。確保所有生成的內容（如郵件主旨或活動描述）都與會議背景相關。',
+        analysisPrompt: '你是一位專業的多語言會議助理。使用者的首選語言是繁體中文。請分析以下可能包含多種口語的會議音訊。你的任務是處理這個多語言音訊，並只用繁體中文產生所有輸出。提供一個簡潔的摘要，一個行動項目列表，以及一個帶有發言者標籤（例如，發言人1，發言人2）的完整文字記錄。在摘要中，要特別注意並清楚地列出任何提到的財務數字、預算或成本。識別所有獨特的發言者。所有輸出文本（摘要、行動項目、文字記錄）必須翻譯成繁體中文書寫。將輸出格式化為一個JSON對象，鍵為："summary"、"actionItems"（字串陣列）、"transcript"（帶有換行符和發言者標籤的字串）和 "speakers"（已識別的發言者標籤陣列，如["發言人1", "發言人2"]）。不要包含JSON markdown包裝。',
+        actionPrompt: '你是一個智能助理。根據會議的全部背景和一個具體的行動項目，呼叫最合適的工具來幫助使用者完成它。使用者的語言是繁體中文。會議標題：「{meetingTitle}」。會議日期：「{meetingDate}」。會議摘要：「{meetingSummary}」。行動項目：「{actionItemText}」。確保所有生成的內容，如電子郵件主旨或活動描述，都與會議背景相關。',
         featureShowcase: 'Verbatim 功能',
         createdBy: '建立者',
         creatorName: 'Simon Luke',
         creatorEmail: 'simon.luke@impactoryinstitute.com',
         dedication: ' lovingly dedicated to my family, all the busy moms out there, and the creator. ❤️',
         featureList: [
-            '多語言AI分析',
-            '自動摘要與行動項目',
-            '完整逐字稿與發言人標示',
+            '多語言 AI 分析',
+            '自動摘要和行動項',
+            '帶發言人標籤的完整轉錄',
             '一鍵操作（日曆、Gmail、文件）',
-            'Markdown 匯出與複製',
-            '子母畫面迷你檢視',
+            'Markdown 匯出和複製',
+            '子母畫面迷你視圖',
             '離線 PWA 功能',
             '音訊來源選擇',
         ],
-        consentTitle: '重要通知',
-        consentInternalUse: '我確認此應用程式僅供 Impactory Institute 內部使用。',
-        consentNoCopy: '我同意未經許可不複製或散佈此應用程式。',
-        consentContinue: '接受並繼續',
-        loginTitle: '建立您的帳戶',
-        loginSubtitle: '要開始，請建立一個免費帳戶以儲存和管理您的會話。',
-        nameLabel: '全名',
-        emailLabel: '電子郵件',
-        continueButton: '繼續',
+        loginTitle: '歡迎使用 Verbatim',
+        loginSubtitle: '使用 Google 登入以儲存和管理您的會話。',
         faqLink: '常見問題',
         faqTitle: '常見問題解答',
         logout: '登出',
         faq: [
              {
                 q: '這個版本（Beta v1.3）有什麼新功能？',
-                a: '此版本增強了 AI 的智慧，特別是在財務主題方面。AI 現在能更好地識別和突顯摘要中的貨幣數字。它還為相關任務引入了新的一鍵操作「草擬發票郵件」，使財務追蹤更快、更容易。',
+                a: '此版本增強了AI的智能，特別是在財務主題方面。AI現在能更好地識別和突顯摘要中的貨幣數字。它還針對相關任務引入了新的“草擬發票”一鍵操作，使財務後續工作更快更容易。',
             },
             {
-                q: '應用程式如何處理關於金錢的討論？',
-                a: 'AI 經過訓練，可以識別涉及財務的對話。它會自動在「核心摘要」部分突顯會議期間提到的任何具體數字、預算或成本。如果行動項涉及向客戶開具帳單（例如，「向客戶 X 發送 500 美元的發票」），「執行操作」按鈕將提供為您草擬發票郵件的選項，並預先填寫收件人、金額和描述。',
+                q: '該應用程式如何處理關於金錢的討論？',
+                a: 'AI經過訓練，能夠識別涉及財務的對話。它會自動在“關鍵摘要”部分突顯會議期間提到的任何具體數字、預算或成本。如果一個行動項目涉及向客戶開具帳單（例如，“向客戶X發送一張500美元的發票”），“採取行動”按鈕將為您提供草擬發票郵件的選項，預先填寫收件人、金額和描述。',
             },
             {
-                q: '如何開始新的錄音？',
-                a: '在「錄製」選項卡中，點擊大的麥克風按鈕。如果是您第一次使用，系統會要求您建立一個帳戶。然後，您將被提示選擇您偏好的麥克風。點擊「開始」後，錄音將立即開始。',
+                q: '我如何開始新的錄音？',
+                a: '首先，您需要使用您的Google帳戶登入。登入後，導覽至“錄製”選項卡並點擊大的麥克風按鈕。然後會提示您選擇您喜歡的麥克風。一旦您點擊“開始”，錄音將立即開始。',
             },
             {
-                q: 'Verbatim 能否在同一次會議中理解不同的語言？',
-                a: '是的！Verbatim 由一個多語言人工智慧驅動，可以處理包含多種語言的音訊。所有最終輸出，包括摘要、行動項和文字記錄，都將被翻譯並以您瀏覽器的預設語言（英語、西班牙語或中文）呈現。',
+                q: 'Verbatim 能在同一次會議中理解不同的語言嗎？',
+                a: '是的！Verbatim 由一個多語言AI驅動，可以處理包含多種語言的音訊。所有最終輸出，包括摘要、行動項目和文字記錄，都將被翻譯並以您瀏覽器的預設語言（英語、西班牙語或中文）呈現。',
             },
             {
-                q: '發言人是如何被識別的？我可以更改他們的名字嗎？',
-                a: '人工智慧會自動區分不同的發言人，並將他們標記為「發言人 1」等。分析後，點擊發言人姓名旁邊的鉛筆圖示（✏️）。姓名將變為可編輯欄位。輸入新名稱後按 Enter 鍵或點擊其他地方即可儲存。這將在整個文字記錄中更新該姓名。',
+                q: '發言者是如何被識別的，我可以更改他們的名字嗎？',
+                a: 'AI會自動區分不同的發言者，並將他們標記為“發言人1”等。分析後，點擊發言者姓名旁邊的鉛筆圖示（✏️）。姓名將變為可編輯欄位。輸入新名稱後按Enter鍵或點擊別處即可儲存。這會更新整個文字記錄中的姓名。',
             },
             {
-                q: '什麼是「一鍵操作」？',
-                a: '對於人工智慧識別的每個行動項，您可以點擊「執行操作 ✨」按鈕。人工智慧將確定最適合該任務的工具（例如建立日曆活動、草擬電子郵件或啟動文件），並為您預填必要的資訊。',
+                q: '什麼是“一鍵操作”？',
+                a: '對於AI識別的每個行動項目，您可以點擊“採取行動 ✨”按鈕。AI將確定任務的最佳工具（如建立日曆活動、草擬電子郵件或啟動文件），並為您預填必要的資訊。',
             },
             {
-                q: '在另一個視窗時，如何使用錄音控制？',
-                a: '在桌面瀏覽器上錄音時，點擊「切換迷你視圖」按鈕。這將開啟一個小的子母畫面視窗，其中包含一個計時器和一個「停止」按鈕，該視窗會保持在其他視窗的頂部，方便您輕鬆控制錄音。',
+                q: '在另一個視窗中時，我如何使用錄音控制？',
+                a: '在桌面瀏覽器上錄音時，點擊“切換迷你視圖”按鈕。這將開啟一個小的子母畫面視窗，帶有一個計時器和一個“停止”按鈕，它會停留在您其他視窗的頂部，以便您可以輕鬆控制錄音。',
             },
             {
-                q: '這個應用程式可以離線工作嗎？',
-                a: '是的。Verbatim 是一個漸進式網路應用程式（PWA）。首次造訪後，您可以將其安裝在您的裝置上，以獲得類似應用程式的體驗。即使沒有網路連線，您也可以查看過去的會話。但是，分析新的錄音需要網路連線才能與人工智慧通訊。',
+                q: '該應用程式可以離線工作嗎？',
+                a: '是的。Verbatim 是一個漸進式網路應用程式（PWA）。首次造訪後，您可以將其安裝在您的裝置上，以獲得類似應用程式的體驗。即使沒有網路連線，您也可以查看過去的會話。但是，分析新的錄音需要網路連線才能與AI通訊。',
             },
             {
                 q: '我的資料儲存在哪裡？',
-                a: '您的帳戶資訊和所有會話資料都儲存在一個模擬的雲端資料庫中，該資料庫使用您瀏覽器的本機儲存體來實現持久性。這使您可以在瀏覽器重新整理後存取您的資料。除了在分析期間由 Gemini API 暫時處理音訊外，不會將任何資料傳送到或儲存在任何外部伺服器上。',
+                a: '您的帳戶資訊和所有會話資料都儲存在一個模擬的雲端資料庫中，該資料庫使用您瀏覽器的本機儲存來實現持久性。這使您可以在瀏覽器重新整理後存取您的資料。除了在分析期間由Gemini API臨時處理音訊外，不會將任何資料傳送到或儲存在任何外部伺服器上。',
             },
         ],
         sessions: '會話',
         record: '錄製',
-        recording: '錄製中...',
-        tapToRecord: '點擊以開始錄製',
-    },
+        recording: '錄音中...',
+        tapToRecord: '點擊開始錄音',
+    }
 };
 
-// --- Helper Functions ---
-const getLanguage = (): Language => {
+// FIX: Add types for translations to improve type safety and inference.
+type EnglishTranslations = typeof translations['en'];
+type TranslationKey = keyof EnglishTranslations;
+
+const getBrowserLanguage = (): Language => {
     const lang = navigator.language.toLowerCase();
     if (lang.startsWith('es')) return 'es';
     if (lang.startsWith('zh-cn')) return 'zh-CN';
@@ -653,1026 +639,1392 @@ const getLanguage = (): Language => {
     return 'en';
 };
 
+const language = getBrowserLanguage();
+// FIX: Make the getTranslator function generic to ensure type-safe return values based on the translation key.
+const getTranslator = (lang: Language) => <K extends TranslationKey>(key: K, replacements?: { [key: string]: string }): EnglishTranslations[K] => {
+    const translation = (translations[lang] as any)[key] || translations.en[key];
+
+    if (replacements && typeof translation === 'string') {
+        let replaced = translation;
+        Object.entries(replacements).forEach(([rKey, value]) => {
+            replaced = replaced.replace(`{${rKey}}`, value);
+        });
+        return replaced as EnglishTranslations[K];
+    }
+    return translation;
+};
+const t = getTranslator(language);
+
+// --- Helper Functions ---
 const getPlatform = (): Platform => {
     const ua = navigator.userAgent;
     if (/android/i.test(ua)) return 'android';
     if (/iPad|iPhone|iPod/.test(ua) && !(window as any).MSStream) return 'ios';
-    if (/Macintosh|MacIntel|MacPPC|Mac68K/.test(ua)) return 'macos';
-    if (/Win32|Win64|Windows|WinCE/.test(ua)) return 'windows';
+    if (/mac/i.test(ua)) return 'macos';
+    if (/windows/i.test(ua)) return 'windows';
     return 'unknown';
 };
 
-const t = translations[getLanguage()];
+const styles: { [key: string]: CSSProperties } = {
+    // ... A large collection of shared styles ...
+    app: {
+        fontFamily: "'Poppins', sans-serif",
+        backgroundColor: '#0D0D0D',
+        color: '#FFFFFF',
+        minHeight: '100vh',
+        display: 'flex',
+        flexDirection: 'column',
+    },
+    header: {
+        backgroundColor: '#1A1A1A',
+        padding: '16px 24px',
+        display: 'flex',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        borderBottom: '1px solid #333',
+    },
+    logo: {
+        display: 'flex',
+        alignItems: 'center',
+        gap: '12px',
+        textDecoration: 'none',
+        color: 'white',
+    },
+    logoImage: {
+        height: '40px',
+        width: '40px'
+    },
+    logoText: {
+        fontSize: '1.5rem',
+        fontWeight: 'bold'
+    },
+    userProfile: {
+        display: 'flex',
+        alignItems: 'center',
+        gap: '12px',
+    },
+    userImage: {
+        width: '40px',
+        height: '40px',
+        borderRadius: '50%',
+    },
+    logoutButton: {
+        background: 'none',
+        border: '1px solid #555',
+        color: '#ccc',
+        padding: '8px 16px',
+        borderRadius: '20px',
+        cursor: 'pointer',
+        fontSize: '0.9rem',
+        transition: 'background-color 0.2s, color 0.2s',
+    },
+    mainContent: {
+        flex: 1,
+        padding: '24px',
+        display: 'flex',
+        flexDirection: 'column',
+    },
+    footer: {
+        backgroundColor: '#1A1A1A',
+        color: '#888',
+        textAlign: 'center',
+        padding: '12px',
+        fontSize: '0.8rem',
+        borderTop: '1px solid #333',
+    },
+    button: {
+        backgroundColor: '#00A99D',
+        color: 'white',
+        border: 'none',
+        padding: '12px 24px',
+        borderRadius: '8px',
+        fontSize: '1rem',
+        fontWeight: 600,
+        cursor: 'pointer',
+        transition: 'background-color 0.2s',
+        display: 'flex',
+        alignItems: 'center',
+        gap: '8px',
+    },
+    // ... more styles
+};
 
+// --- Main Application ---
 const App = () => {
-    // --- State Management ---
     const [user, setUser] = useState<User | null>(null);
-    const [sessions, setSessions] = useState<Session[]>([]);
-    const [selectedSession, setSelectedSession] = useState<Session | null>(null);
-    const [isRecording, setIsRecording] = useState(false);
-    const [isAnalyzing, setIsAnalyzing] = useState(false);
-    const [recordingTime, setRecordingTime] = useState(0);
-    const [showActionModal, setShowActionModal] = useState<ActionModalData | null>(null);
-    const [availableDevices, setAvailableDevices] = useState<MediaDeviceInfo[]>([]);
-    const [showDeviceSelector, setShowDeviceSelector] = useState(false);
-    const [error, setError] = useState<string | null>(null);
-    const [searchQuery, setSearchQuery] = useState('');
-    const [editingSpeaker, setEditingSpeaker] = useState<EditingSpeaker | null>(null);
-    const [showFaq, setShowFaq] = useState(false);
     const [isLoading, setIsLoading] = useState(true);
-    const [showLoginModal, setShowLoginModal] = useState(false);
-    const [pendingAction, setPendingAction] = useState<string | null>(null);
-    const [activeTab, setActiveTab] = useState<ActiveTab>('record');
-    const [keepAwake, setKeepAwake] = useState(false);
 
-
-    // --- Refs ---
-    const mediaRecorderRef = useRef<MediaRecorder | null>(null);
-    const audioChunksRef = useRef<Blob[]>([]);
-    const recordingIntervalRef = useRef<number | null>(null);
-    const pipWindowRef = useRef<Window | null>(null);
-    const pipChannelRef = useRef(new BroadcastChannel('verbatim_pip_channel'));
-    const wakeLockRef = useRef<any>(null);
-
-
-    // --- Data Fetching and Initialization ---
     useEffect(() => {
-        const initializeApp = async () => {
-            try {
-                const existingUser = await dbService.getUser();
-                if (existingUser) {
-                    setUser(existingUser);
-                    const userSessions = await dbService.getSessions(existingUser.id);
-                    setSessions(userSessions);
-                } else {
-                    // If no user, default to record tab, but show login later if they try to record
-                }
-            } catch (err) {
-                console.error("Initialization Error:", err);
-            } finally {
-                setIsLoading(false);
-            }
+        const checkUser = async () => {
+            const existingUser = await dbService.getUser();
+            setUser(existingUser);
+            setIsLoading(false);
         };
-        initializeApp();
-
-        // Load user preferences
-        const storedKeepAwake = localStorage.getItem('verbatim_keepAwake');
-        if (storedKeepAwake) {
-            setKeepAwake(JSON.parse(storedKeepAwake));
-        }
-
-        // Register service worker for PWA capabilities
-        if ('serviceWorker' in navigator) {
-            window.addEventListener('load', () => {
-                navigator.serviceWorker.register('/sw.js').then(registration => {
-                    console.log('SW registered: ', registration);
-                }).catch(registrationError => {
-                    console.log('SW registration failed: ', registrationError);
-                });
-            });
-        }
+        checkUser();
     }, []);
 
-    // --- User Preference Persistence ---
-    useEffect(() => {
-        localStorage.setItem('verbatim_keepAwake', JSON.stringify(keepAwake));
-    }, [keepAwake]);
-    
-    // --- Pending Action Handler ---
-    // This effect triggers the recording process after a user has been created
-    // via the login modal.
-    useEffect(() => {
-        if (user && pendingAction === 'start_recording') {
-            setPendingAction(null); // Clear the pending action
-            startRecordingContinuation(); // Proceed with recording
-        }
-    }, [user, pendingAction]);
-
-    // --- Geolocation ---
-    const getGeolocation = (): Promise<GeolocationPosition | null> => {
-        return new Promise((resolve) => {
-            if (!navigator.geolocation) {
-                resolve(null);
-            } else {
-                navigator.geolocation.getCurrentPosition(
-                    (position) => resolve(position),
-                    () => resolve(null),
-                    { timeout: 5000, enableHighAccuracy: false }
-                );
-            }
-        });
+    const handleLoginSuccess = async (loggedInUser: User) => {
+        await dbService.saveUser(loggedInUser);
+        setUser(loggedInUser);
     };
-    
-    const fetchLocationName = async (lat: number, lon: number): Promise<string> => {
+
+    const handleLogout = async () => {
+        await dbService.logout();
+        setUser(null);
+        if (window.google) {
+            window.google.accounts.id.disableAutoSelect();
+        }
+    };
+
+    if (isLoading) {
+        return <div style={styles.app}><div style={{ margin: 'auto', color: '#888' }}>Loading...</div></div>;
+    }
+
+    if (!user) {
+        return <LoginScreen onLogin={handleLoginSuccess} />;
+    }
+
+    return <MainApp user={user} onLogout={handleLogout} />;
+};
+
+
+const LoginScreen: React.FC<{ onLogin: (user: User) => void }> = ({ onLogin }) => {
+    const t = getTranslator(language);
+    const googleButtonRef = useRef<HTMLDivElement>(null);
+    const [error, setError] = useState<string | null>(null);
+
+    const handleCredentialResponse = useCallback(async (response: any) => {
         try {
-            // Using a free, no-API-key reverse geocoding service.
-            // Replace with a more robust service like Google Maps Geocoding API for production.
-            const response = await fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lon}`);
-            if (!response.ok) throw new Error('Failed to fetch location name');
-            const data = await response.json();
-            return data.display_name || t.locationUnavailable;
+            const decoded: { sub: string, name: string, email: string, picture: string } = jwtDecode(response.credential);
+            const user: User = {
+                id: decoded.sub,
+                name: decoded.name,
+                email: decoded.email,
+                picture: decoded.picture,
+            };
+            onLogin(user);
         } catch (error) {
-            console.error("Error fetching location name:", error);
-            return t.locationUnavailable;
+            console.error("Error decoding credential response:", error);
+            setError("Failed to process login. Please try again.");
         }
-    };
+    }, [onLogin]);
 
 
-    // --- Recording Logic ---
-    const handleStartRecordingClick = async () => {
-        if (!user) {
-            setPendingAction('start_recording');
-            setShowLoginModal(true);
-        } else {
-            await startRecordingContinuation();
-        }
-    };
-
-    const startRecordingContinuation = async () => {
-        setError(null);
-        try {
-            // Check for microphone permissions
-            const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-            // Get available audio devices
-            const devices = await navigator.mediaDevices.enumerateDevices();
-            const audioInputDevices = devices.filter(device => device.kind === 'audioinput');
-            setAvailableDevices(audioInputDevices);
-            setShowDeviceSelector(true);
-            // Close the temp stream, a new one will be created with the selected device
-            stream.getTracks().forEach(track => track.stop());
-        } catch (err) {
-            console.error("Microphone access error:", err);
-            setError(t.micPermissionError);
-        }
-    };
-
-    const handleDeviceSelected = async (deviceId: string) => {
-        setShowDeviceSelector(false);
-        audioChunksRef.current = [];
-        try {
-            const stream = await navigator.mediaDevices.getUserMedia({
-                audio: { deviceId: deviceId ? { exact: deviceId } : undefined }
-            });
-
-            mediaRecorderRef.current = new MediaRecorder(stream);
-
-            mediaRecorderRef.current.ondataavailable = (event) => {
-                audioChunksRef.current.push(event.data);
-            };
-
-            mediaRecorderRef.current.onstop = async () => {
-                const audioBlob = new Blob(audioChunksRef.current, { type: 'audio/webm' });
-                // Check if recording is long enough to be meaningful
-                if (audioBlob.size === 0 || recordingTime < 2) {
-                    setError(t.recordingTooShortError);
-                    setIsRecording(false);
-                    return;
-                }
-                
-                setIsAnalyzing(true);
-                
-                if (!navigator.onLine) {
-                    setError(t.offlineError);
-                    setIsAnalyzing(false);
-                    return;
-                }
-
-                try {
-                    const base64Audio = await blobToBase64(audioBlob);
-                    const result = await analyzeAudio(base64Audio);
-
-                    const location = await getGeolocation();
-                    let locationName = t.locationUnavailable;
-                    let mapUrl = '';
-                    if (location) {
-                        locationName = await fetchLocationName(location.coords.latitude, location.coords.longitude);
-                        mapUrl = `https://www.google.com/maps?q=${location.coords.latitude},${location.coords.longitude}`;
-                    }
-                    
-                    const newSession: Session = {
-                        id: `session_${Date.now()}`,
-                        metadata: {
-                            title: `Meeting - ${new Date().toLocaleString()}`,
-                            date: new Date().toISOString(),
-                            location: locationName,
-                            mapUrl: mapUrl
-                        },
-                        results: result,
-                        speakers: result.speakers.reduce((acc, speaker) => ({...acc, [speaker]: speaker }), {})
-                    };
-                    
-                    if (user) {
-                        await dbService.saveSession(user.id, newSession);
-                        const updatedSessions = await dbService.getSessions(user.id);
-                        setSessions(updatedSessions);
-                        setSelectedSession(newSession);
-                    }
-                } catch (e) {
-                    console.error("Analysis Error:", e);
-                    setError(t.processingError);
-                } finally {
-                    setIsAnalyzing(false);
-                }
-
-                 // Clean up stream
-                stream.getTracks().forEach(track => track.stop());
-            };
-
-            mediaRecorderRef.current.start();
-            setIsRecording(true);
-            setRecordingTime(0);
-            recordingIntervalRef.current = window.setInterval(() => {
-                setRecordingTime(prevTime => prevTime + 1);
-            }, 1000);
-            
-             // Activate Wake Lock
-            if (keepAwake && 'wakeLock' in navigator) {
-                try {
-                    wakeLockRef.current = await (navigator as any).wakeLock.request('screen');
-                    console.log('Screen Wake Lock is active.');
-                } catch (err: any) {
-                    console.error(`${err.name}, ${err.message}`);
-                }
-            }
-
-        } catch (err) {
-            console.error("Error starting recording with device:", err);
-            setError(t.micPermissionError);
-        }
-    };
-
-    const handleStopRecording = () => {
-        if (mediaRecorderRef.current && isRecording) {
-            mediaRecorderRef.current.stop();
-            setIsRecording(false);
-            if (recordingIntervalRef.current) {
-                clearInterval(recordingIntervalRef.current);
-            }
-            if (pipWindowRef.current) {
-                pipWindowRef.current.close();
-                pipWindowRef.current = null;
-            }
-            // Release Wake Lock
-            if (wakeLockRef.current) {
-                wakeLockRef.current.release().then(() => {
-                    wakeLockRef.current = null;
-                    console.log('Screen Wake Lock released.');
-                });
-            }
-        }
-    };
-    
-    const blobToBase64 = (blob: Blob): Promise<string> => {
-        return new Promise((resolve, reject) => {
-            const reader = new FileReader();
-            reader.onloadend = () => {
-                const base64data = (reader.result as string).split(',')[1];
-                resolve(base64data);
-            };
-            reader.onerror = reject;
-            reader.readAsDataURL(blob);
-        });
-    };
-    
-    const analyzeAudio = async (base64Audio: string): Promise<MeetingResults & { speakers: string[] }> => {
-        const audioPart = { inlineData: { mimeType: 'audio/webm', data: base64Audio } };
-        const textPart = { text: t.analysisPrompt };
-
-        const response = await ai.models.generateContent({
-            model: "gemini-2.5-flash",
-            contents: [{ parts: [audioPart, textPart] }],
-        });
-
-        const jsonString = response.text;
-        const parsedResult = JSON.parse(jsonString);
-
-        return {
-            summary: parsedResult.summary || '',
-            actionItems: parsedResult.actionItems || [],
-            transcript: parsedResult.transcript || '',
-            speakers: parsedResult.speakers || ['Speaker 1'],
-        };
-    };
-
-    // --- PiP Window Logic ---
     useEffect(() => {
-        const channel = pipChannelRef.current;
+        const FALLBACK_CLIENT_ID = "450870631577-ecddfl5qeb8rq3bdjhbjnlmckb4tksb6.apps.googleusercontent.com";
+        const clientId = process.env.GOOGLE_CLIENT_ID;
+        let effectiveClientId = clientId;
+
+        if (!clientId) {
+            console.warn(
+                "❗ Google Sign-In is using a fallback Client ID. For production, please set the 'GOOGLE_CLIENT_ID' secret in your project."
+            );
+            effectiveClientId = FALLBACK_CLIENT_ID;
+        }
+
+        if (window.google && googleButtonRef.current) {
+            try {
+                window.google.accounts.id.initialize({
+                    client_id: effectiveClientId,
+                    callback: handleCredentialResponse,
+                });
+                window.google.accounts.id.renderButton(
+                    googleButtonRef.current,
+                    { theme: 'outline', size: 'large', text: 'continue_with', width: '300' }
+                );
+            } catch (e) {
+                console.error("Error initializing Google Sign-In:", e);
+                setError("Failed to initialize Google Sign-In. Please check the console for details.");
+            }
+        } else {
+             // Retry if google object is not yet available
+            const timeout = setTimeout(() => {
+                if(window.google && googleButtonRef.current) {
+                    try {
+                        window.google.accounts.id.initialize({
+                            client_id: effectiveClientId,
+                            callback: handleCredentialResponse,
+                        });
+                        window.google.accounts.id.renderButton(
+                            googleButtonRef.current,
+                            { theme: 'outline', size: 'large', text: 'continue_with', width: '300' }
+                        );
+                    } catch (e) {
+                        console.error("Error initializing Google Sign-In (retry):", e);
+                        setError("Failed to initialize Google Sign-In. Please check the console for details.");
+                    }
+                } else {
+                     console.error("Google Identity Services script not loaded.");
+                     setError("Could not connect to Google Sign-In service. Please check your internet connection and refresh the page.");
+                }
+            }, 1000);
+            return () => clearTimeout(timeout);
+        }
+    }, [handleCredentialResponse]);
+
+    const loginStyles: { [key: string]: CSSProperties } = {
+        container: {
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center',
+            justifyContent: 'center',
+            minHeight: '100vh',
+            backgroundColor: '#0D0D0D',
+            color: '#FFFFFF',
+            fontFamily: "'Poppins', sans-serif",
+            textAlign: 'center',
+            padding: '24px',
+        },
+        logoImage: { height: '80px', width: '80px', marginBottom: '16px' },
+        title: { fontSize: '2.5rem', fontWeight: 700, margin: '0 0 8px 0' },
+        subtitle: { fontSize: '1.1rem', color: '#AAA', margin: '0 0 32px 0' },
+        error: { color: '#ff4d4d', margin: '16px 0', maxWidth: '300px' },
+    };
+
+    return (
+        <div style={loginStyles.container}>
+            <img src="https://assets-global.website-files.com/6526ada137350b5030229339/6526b15a4606549340b6167c_II-logo-white-cropped.png" alt="Verbatim Logo" style={loginStyles.logoImage} />
+            <h1 style={loginStyles.title}>{t('loginTitle')}</h1>
+            <p style={loginStyles.subtitle}>{t('loginSubtitle')}</p>
+            <div ref={googleButtonRef}></div>
+            {error && <p style={loginStyles.error}>{error}</p>}
+        </div>
+    );
+};
+
+
+const MainApp: React.FC<{ user: User, onLogout: () => void }> = ({ user, onLogout }) => {
+    // ... All the original state and logic from the App component goes here ...
+    const [isRecording, setIsRecording] = useState(false);
+    const [isAnalyzing, setIsAnalyzing] = useState(false);
+    const [sessions, setSessions] = useState<Session[]>([]);
+    const [activeSession, setActiveSession] = useState<Session | null>(null);
+    const [errorMessage, setErrorMessage] = useState('');
+    const [actionModalData, setActionModalData] = useState<ActionModalData | null>(null);
+    const [faqModalOpen, setFaqModalOpen] = useState(false);
+    const [searchQuery, setSearchQuery] = useState('');
+    const [editingSpeaker, setEditingSpeaker] = useState<EditingSpeaker | null>(null);
+    const [activeTab, setActiveTab] = useState<ActiveTab>('record');
+    const [isPiP, setIsPiP] = useState(false);
+    const [keepScreenAwake, setKeepScreenAwake] = useState(false);
+    const [audioDeviceModalOpen, setAudioDeviceModalOpen] = useState(false);
+    const [audioDevices, setAudioDevices] = useState<MediaDeviceInfo[]>([]);
+    const [selectedDeviceId, setSelectedDeviceId] = useState<string>('default');
+
+    const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+    const audioChunksRef = useRef<Blob[]>([]);
+    const pipWindowRef = useRef<Window | null>(null);
+    const recordingTimerRef = useRef<number | null>(null);
+    const recordingTimeRef = useRef(0);
+    const wakeLockRef = useRef<any>(null);
+    const channel = useRef(new BroadcastChannel('verbatim_pip_channel')).current;
+
+
+    // ... All original useEffects and helper functions from App component ...
+    useEffect(() => {
+        dbService.getSessions(user.id).then(setSessions);
+    }, [user.id]);
+
+    useEffect(() => {
         const handlePipMessage = (event: MessageEvent) => {
             if (event.data.type === 'stop_recording') {
-                handleStopRecording();
+                stopRecording();
             } else if (event.data.type === 'pip_ready') {
-                channel.postMessage({ type: 'state_update', isRecording, recordingTime });
+                 channel.postMessage({ type: 'state_update', isRecording: isRecording, recordingTime: recordingTimeRef.current });
             }
         };
         channel.addEventListener('message', handlePipMessage);
         return () => channel.removeEventListener('message', handlePipMessage);
-    }, [isRecording, recordingTime]);
+    }, [isRecording]);
 
     useEffect(() => {
-        pipChannelRef.current.postMessage({ type: 'time_update', time: recordingTime });
-    }, [recordingTime]);
-
-    const togglePip = async () => {
-        if (pipWindowRef.current) {
-            pipWindowRef.current.close();
-            pipWindowRef.current = null;
+        if (isRecording) {
+            recordingTimerRef.current = window.setInterval(() => {
+                recordingTimeRef.current += 1;
+                if (pipWindowRef.current && !pipWindowRef.current.closed) {
+                     channel.postMessage({ type: 'time_update', time: recordingTimeRef.current });
+                }
+            }, 1000);
         } else {
-            const pip = await window.open('/pip.html', 'VerbatimPIP', 'width=350,height=80,popup');
-            pipWindowRef.current = pip;
-            pipWindowRef.current?.addEventListener('beforeunload', () => {
-                pipWindowRef.current = null;
-            });
+            if (recordingTimerRef.current) {
+                clearInterval(recordingTimerRef.current);
+                recordingTimerRef.current = null;
+            }
+            recordingTimeRef.current = 0;
         }
-    };
-    
-     // --- UI and Data Handlers ---
-    const handleSelectSession = (session: Session) => {
-        setSelectedSession(session);
-        setError(null);
-    };
+        return () => {
+            if (recordingTimerRef.current) clearInterval(recordingTimerRef.current);
+        };
+    }, [isRecording, channel]);
 
-    const handleBackToList = () => {
-        setSelectedSession(null);
-    };
-    
-    const handleDeleteSession = async (sessionId: string) => {
-        if (user && window.confirm(t.deleteConfirmation)) {
-            await dbService.deleteSession(user.id, sessionId);
-            const updatedSessions = await dbService.getSessions(user.id);
-            setSessions(updatedSessions);
-            if (selectedSession?.id === sessionId) {
-                setSelectedSession(null);
+    const toggleKeepAwake = async () => {
+        if (!keepScreenAwake) {
+            try {
+                if ('wakeLock' in navigator) {
+                    wakeLockRef.current = await (navigator as any).wakeLock.request('screen');
+                    setKeepScreenAwake(true);
+                    console.log('Screen Wake Lock is active.');
+                } else {
+                    console.warn('Screen Wake Lock API not supported.');
+                }
+            } catch (err: any) {
+                console.error(`${err.name}, ${err.message}`);
+            }
+        } else {
+            if (wakeLockRef.current) {
+                await wakeLockRef.current.release();
+                wakeLockRef.current = null;
+                setKeepScreenAwake(false);
+                console.log('Screen Wake Lock released.');
             }
         }
     };
+
+    const openAudioDeviceModal = async () => {
+        try {
+            // Request permissions first
+            await navigator.mediaDevices.getUserMedia({ audio: true });
+            const devices = await navigator.mediaDevices.enumerateDevices();
+            setAudioDevices(devices.filter(d => d.kind === 'audioinput'));
+            setAudioDeviceModalOpen(true);
+        } catch (err) {
+            console.error("Error enumerating audio devices:", err);
+            setErrorMessage(t('micPermissionError'));
+        }
+    };
+
+
+    const startRecording = async () => {
+        setErrorMessage('');
+        try {
+            const stream = await navigator.mediaDevices.getUserMedia({ audio: { deviceId: selectedDeviceId ? { exact: selectedDeviceId } : undefined } });
+            mediaRecorderRef.current = new MediaRecorder(stream);
+            audioChunksRef.current = [];
+            mediaRecorderRef.current.ondataavailable = event => {
+                audioChunksRef.current.push(event.data);
+            };
+            mediaRecorderRef.current.onstop = processAudio;
+            mediaRecorderRef.current.start();
+            setIsRecording(true);
+            setAudioDeviceModalOpen(false);
+            if (keepScreenAwake && !wakeLockRef.current) {
+                toggleKeepAwake(); // Re-engage wake lock if it was enabled
+            }
+        } catch (err) {
+            console.error('Error starting recording:', err);
+            setErrorMessage(t('micPermissionError'));
+            setAudioDeviceModalOpen(false);
+        }
+    };
+
+    const stopRecording = () => {
+        if (mediaRecorderRef.current && mediaRecorderRef.current.state === 'recording') {
+            mediaRecorderRef.current.stop();
+            setIsRecording(false);
+            if (wakeLockRef.current) {
+                toggleKeepAwake(); // Release wake lock
+            }
+            // Close PiP window
+            if(pipWindowRef.current && !pipWindowRef.current.closed) {
+                pipWindowRef.current.close();
+                pipWindowRef.current = null;
+            }
+            setIsPiP(false);
+        }
+    };
+
+    const processAudio = async () => {
+        if (recordingTimeRef.current < 2) {
+            setErrorMessage(t('recordingTooShortError'));
+            return;
+        }
+
+        setIsAnalyzing(true);
+        setErrorMessage('');
+
+        if (!navigator.onLine) {
+            setErrorMessage(t('offlineError'));
+            setIsAnalyzing(false);
+            return;
+        }
+
+        try {
+            const audioBlob = new Blob(audioChunksRef.current, { type: 'audio/webm' });
+            const reader = new FileReader();
+            reader.readAsDataURL(audioBlob);
+            reader.onloadend = async () => {
+                const base64Audio = (reader.result as string).split(',')[1];
+                const audioPart = {
+                    inlineData: {
+                        mimeType: 'audio/webm',
+                        data: base64Audio
+                    },
+                };
+                const request = {
+                    contents: [{ parts: [audioPart, { text: t('analysisPrompt') }] }],
+                };
+
+                const response = await ai.models.generateContent({
+                    model: 'gemini-2.5-flash',
+                    contents: request.contents,
+                });
+
+                const jsonString = response.text.trim();
+                const result = JSON.parse(jsonString);
+
+                const locationInfo = await getCurrentLocation();
+
+                const newSession: Session = {
+                    id: new Date().toISOString(),
+                    metadata: {
+                        title: `${t('meetingTitle')} - ${new Date().toLocaleDateString()}`,
+                        date: new Date().toISOString(),
+                        location: locationInfo.location,
+                        mapUrl: locationInfo.mapUrl,
+                    },
+                    results: {
+                        transcript: result.transcript || t('noTranscript'),
+                        summary: result.summary || t('noSummary'),
+                        actionItems: result.actionItems || [],
+                    },
+                    speakers: (result.speakers || []).reduce((acc: any, speaker: string) => {
+                        acc[speaker] = speaker;
+                        return acc;
+                    }, {})
+                };
+
+                await dbService.saveSession(user.id, newSession);
+                setSessions(prev => [newSession, ...prev]);
+                setActiveSession(newSession);
+                setActiveTab('sessions');
+                setIsAnalyzing(false);
+            };
+        } catch (error) {
+            console.error('Error processing audio:', error);
+            setErrorMessage(t('processingError'));
+            setIsAnalyzing(false);
+        }
+    };
+
+    const getCurrentLocation = async (): Promise<{ location: string, mapUrl: string }> => {
+        return new Promise(resolve => {
+            if (!navigator.geolocation) {
+                resolve({ location: t('locationUnavailable'), mapUrl: '' });
+                return;
+            }
+            navigator.geolocation.getCurrentPosition(
+                async (position) => {
+                    const { latitude, longitude } = position.coords;
+                    try {
+                        // Using a free reverse geocoding service (Nominatim)
+                        const response = await fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${latitude}&lon=${longitude}`);
+                        const data = await response.json();
+                        const location = data.display_name || `${latitude.toFixed(4)}, ${longitude.toFixed(4)}`;
+                        const mapUrl = `https://www.google.com/maps?q=${latitude},${longitude}`;
+                        resolve({ location, mapUrl });
+                    } catch (error) {
+                        console.error('Reverse geocoding failed:', error);
+                        resolve({ location: `${latitude.toFixed(4)}, ${longitude.toFixed(4)}`, mapUrl: `https://www.google.com/maps?q=${latitude},${longitude}` });
+                    }
+                },
+                () => resolve({ location: t('locationUnavailable'), mapUrl: '' }),
+                { timeout: 5000 }
+            );
+        });
+    };
     
+     const togglePiP = async () => {
+        if (isPiP && pipWindowRef.current) {
+            pipWindowRef.current.close();
+            pipWindowRef.current = null;
+            setIsPiP(false);
+        } else if (isRecording) {
+            try {
+                const pip = await window.open('/pip.html', 'VerbatimPIP', 'width=350,height=80,popup');
+                pipWindowRef.current = pip;
+                setIsPiP(true);
+                 pip?.addEventListener('beforeunload', () => {
+                    setIsPiP(false);
+                    pipWindowRef.current = null;
+                });
+            } catch (error) {
+                console.error('Failed to open PiP window:', error);
+            }
+        }
+    };
+
+
     const handleRenameSpeaker = async (sessionId: string, speakerId: string, newName: string) => {
+        if (!newName.trim()) return;
+
         const sessionToUpdate = sessions.find(s => s.id === sessionId);
-        if (user && sessionToUpdate && newName.trim()) {
+        if (sessionToUpdate) {
             const updatedSpeakers = { ...sessionToUpdate.speakers, [speakerId]: newName.trim() };
-            const updatedSession = { ...sessionToUpdate, speakers: updatedSpeakers };
-            
+            // To update transcript, we need to be careful to replace only whole words
+            const oldName = sessionToUpdate.speakers[speakerId];
+            const updatedTranscript = sessionToUpdate.results.transcript.replace(new RegExp(`\\b${oldName}\\b`, 'g'), newName.trim());
+            const updatedSession = {
+                ...sessionToUpdate,
+                speakers: updatedSpeakers,
+                results: { ...sessionToUpdate.results, transcript: updatedTranscript }
+            };
             await dbService.saveSession(user.id, updatedSession);
-            
-            const updatedSessions = sessions.map(s => s.id === sessionId ? updatedSession : s);
-            setSessions(updatedSessions);
-            if (selectedSession?.id === sessionId) {
-                setSelectedSession(updatedSession);
+            setSessions(sessions.map(s => s.id === sessionId ? updatedSession : s));
+            if (activeSession?.id === sessionId) {
+                setActiveSession(updatedSession);
             }
         }
         setEditingSpeaker(null);
     };
 
-    const handleCopyMarkdown = (session: Session) => {
-        const markdown = generateMarkdown(session);
-        navigator.clipboard.writeText(markdown).then(() => {
-            alert(t.copiedSuccess);
-        });
-    };
-
-    const handleDownloadMarkdown = (session: Session) => {
-        const markdown = generateMarkdown(session);
-        const blob = new Blob([markdown], { type: 'text/markdown' });
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = `${session.metadata.title.replace(/[^a-z0-9]/gi, '_').toLowerCase()}.md`;
-        document.body.appendChild(a);
-        a.click();
-        document.body.removeChild(a);
-        URL.revokeObjectURL(url);
-    };
-    
-    const generateMarkdown = (session: Session) => {
-        let transcriptText = session.results.transcript;
-        Object.entries(session.speakers).forEach(([id, name]) => {
-            // Use a regex to replace all occurrences of the speaker ID
-            const regex = new RegExp(id, 'g');
-            transcriptText = transcriptText.replace(regex, `**${name}**`);
-        });
-
-        return `
-# ${session.metadata.title}
-**Date:** ${new Date(session.metadata.date).toLocaleString()}
-**Location:** ${session.metadata.location}
-
-## ✨ ${t.summaryHeader}
-${session.results.summary}
-
-## 📌 ${t.actionItemsHeader}
-${session.results.actionItems.map(item => `- ${item}`).join('\n')}
-
-## 📋 ${t.transcriptHeader}
-${transcriptText}
-        `;
-    };
-
-
-    // --- Action Modal Logic ---
-    const determineAction = async (actionItem: string, session: Session): Promise<ActionModalData> => {
-        const createCalendarEvent: FunctionDeclaration = {
-            name: 'create_calendar_event',
-            description: 'Creates a Google Calendar event.',
-            parameters: {
-                type: Type.OBJECT,
-                properties: {
-                    title: { type: Type.STRING, description: 'The title of the event.' },
-                    description: { type: Type.STRING, description: 'The description for the event.' },
-                    date: { type: Type.STRING, description: 'The date of the event in YYYY-MM-DD format.' },
-                    time: { type: Type.STRING, description: 'The time of the event in HH:MM format (24-hour).' },
-                },
-                required: ['title', 'date', 'time'],
-            },
-        };
-
-        const draftEmail: FunctionDeclaration = {
-            name: 'draft_email',
-            description: 'Drafts an email.',
-            parameters: {
-                type: Type.OBJECT,
-                properties: {
-                    to: { type: Type.STRING, description: 'The recipient\'s email address. Can be a comma-separated list.' },
-                    subject: { type: Type.STRING, description: 'The subject of the email.' },
-                    body: { type: Type.STRING, description: 'The body content of the email.' },
-                },
-                required: ['to', 'subject', 'body'],
-            },
-        };
-        
-        const initiatePhoneCall: FunctionDeclaration = {
-            name: 'initiate_phone_call',
-            description: 'Initiates a phone call.',
-            parameters: {
-                type: Type.OBJECT,
-                properties: {
-                    phoneNumber: { type: Type.STRING, description: 'The phone number to call.' },
-                    reason: { type: Type.STRING, description: 'A brief reason for the call.' },
-                },
-                required: ['phoneNumber'],
-            },
-        };
-        
-        const createDocument: FunctionDeclaration = {
-            name: 'create_document',
-            description: 'Creates a text document with a title and content.',
-            parameters: {
-                type: Type.OBJECT,
-                properties: {
-                    title: { type: Type.STRING, description: 'The suggested title for the document.' },
-                    content: { type: Type.STRING, description: 'The suggested content for the document, often summarizing key points or drafting text.' },
-                },
-                required: ['title', 'content'],
-            },
-        };
-        
-        const draftInvoiceEmail: FunctionDeclaration = {
-            name: 'draft_invoice_email',
-            description: 'Drafts an email to send an invoice for a specific amount to a recipient. Use this for action items that explicitly state to send an invoice or bill someone for a service or product.',
-            parameters: {
-                type: Type.OBJECT,
-                properties: {
-                    to: { type: Type.STRING, description: "The recipient's email address." },
-                    recipientName: { type: Type.STRING, description: "The recipient's full name." },
-                    subject: { type: Type.STRING, description: "The subject line for the invoice email." },
-                    amount: { type: Type.NUMBER, description: 'The numerical amount of money to be invoiced.' },
-                    currencySymbol: { type: Type.STRING, description: 'The currency symbol for the amount, e.g., "$", "€", "¥".' },
-                    itemDescription: { type: Type.STRING, description: 'A brief description of the service or item being invoiced.' },
-                },
-                required: ['to', 'recipientName', 'subject', 'amount', 'currencySymbol', 'itemDescription'],
-            },
-        };
-
-        try {
-             const prompt = t.actionPrompt
-                .replace('{meetingTitle}', session.metadata.title)
-                .replace('{meetingDate}', new Date(session.metadata.date).toLocaleDateString())
-                .replace('{meetingSummary}', session.results.summary)
-                .replace('{actionItemText}', actionItem);
-
-
-            const response = await ai.models.generateContent({
-                model: 'gemini-2.5-flash',
-                contents: [{ parts: [{ text: prompt }] }],
-                config: { tools: [{ functionDeclarations: [createCalendarEvent, draftEmail, initiatePhoneCall, createDocument, draftInvoiceEmail] }] },
-            });
-
-            const fc = response.functionCalls?.[0];
-            
-            if (fc) {
-                return { type: fc.name, args: fc.args, sourceItem: actionItem };
-            } else {
-                 return { type: 'no_action', sourceItem: actionItem };
-            }
-        } catch (error) {
-            console.error("Error determining action:", error);
-            setError(t.actionError);
-            return { type: 'error' };
-        }
-    };
-    
-    const handleTakeAction = async (actionItem: string) => {
-        if (selectedSession) {
-            setIsAnalyzing(true);
-            const actionData = await determineAction(actionItem, selectedSession);
-            setShowActionModal(actionData);
-            setIsAnalyzing(false);
-        }
-    };
-
-    // --- Render Logic ---
-    
     const filteredSessions = sessions.filter(session =>
         session.metadata.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
         session.results.summary.toLowerCase().includes(searchQuery.toLowerCase()) ||
         session.results.transcript.toLowerCase().includes(searchQuery.toLowerCase())
     );
 
-    const renderSpeaker = (sessionId: string, speakerId: string, speakers: Record<string, string>) => {
-        const isEditing = editingSpeaker?.sessionId === sessionId && editingSpeaker?.speakerId === speakerId;
-
-        if (isEditing) {
+    const renderView = () => {
+        if (activeSession) {
             return (
-                <input
-                    type="text"
-                    defaultValue={speakers[speakerId]}
-                    onBlur={(e) => handleRenameSpeaker(sessionId, speakerId, e.target.value)}
-                    onKeyDown={(e) => {
-                        if (e.key === 'Enter') {
-                           handleRenameSpeaker(sessionId, speakerId, (e.target as HTMLInputElement).value);
-                        } else if (e.key === 'Escape') {
-                            setEditingSpeaker(null);
-                        }
-                    }}
-                    autoFocus
-                    className="speaker-edit-input"
+                <SessionDetail
+                    session={activeSession}
+                    onBack={() => setActiveSession(null)}
+                    onAction={(data) => setActionModalData(data)}
+                    user={user}
+                    onRenameSpeaker={(speakerId, newName) => handleRenameSpeaker(activeSession.id, speakerId, newName)}
+                    editingSpeaker={editingSpeaker}
+                    onSetEditingSpeaker={(speakerId) => setEditingSpeaker({ sessionId: activeSession.id, speakerId })}
                 />
             );
         }
 
-        return (
-            <span className="speaker-name" onClick={() => setEditingSpeaker({ sessionId, speakerId })}>
-                {speakers[speakerId]}
-                <span className="rename-speaker-icon">✏️</span>
-            </span>
-        );
+        switch (activeTab) {
+            case 'sessions':
+                return <SessionsList
+                    sessions={filteredSessions}
+                    onSelectSession={setActiveSession}
+                    onDeleteSession={async (sessionId) => {
+                        await dbService.deleteSession(user.id, sessionId);
+                        setSessions(sessions.filter(s => s.id !== sessionId));
+                    }}
+                />;
+            case 'record':
+            default:
+                return <Recorder
+                    isRecording={isRecording}
+                    isAnalyzing={isAnalyzing}
+                    onStart={openAudioDeviceModal}
+                    onStop={stopRecording}
+                    errorMessage={errorMessage}
+                    onTogglePiP={togglePiP}
+                    isPiP={isPiP}
+                    onToggleKeepAwake={toggleKeepAwake}
+                    keepScreenAwake={keepScreenAwake}
+                />;
+        }
+    };
+    
+    return (
+        <div style={styles.app}>
+            <header style={styles.header}>
+                <a href="#" style={styles.logo} onClick={(e) => { e.preventDefault(); setActiveSession(null); setActiveTab('record'); }}>
+                    <img src="https://assets-global.website-files.com/6526ada137350b5030229339/6526b15a4606549340b6167c_II-logo-white-cropped.png" alt="Verbatim Logo" style={styles.logoImage} />
+                    <h1 style={styles.logoText}>{t('title')}</h1>
+                </a>
+                <div style={styles.userProfile}>
+                    {user.picture && <img src={user.picture} alt={user.name} style={styles.userImage} />}
+                    <span>{user.name}</span>
+                    <button style={styles.logoutButton} onClick={onLogout}>{t('logout')}</button>
+                    <button style={{ ...styles.logoutButton, padding: '8px' }} onClick={() => setFaqModalOpen(true)} title={t('faqLink')}>?
+                    </button>
+                </div>
+            </header>
+
+            <main style={styles.mainContent}>
+                {/* Search and Tab Navigation */}
+                {!activeSession && (
+                    <div style={{ marginBottom: '24px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '16px' }}>
+                         <div style={{ flexGrow: 1, maxWidth: '400px' }}>
+                             {activeTab === 'sessions' && (
+                                <input
+                                    type="search"
+                                    placeholder={t('searchPlaceholder')}
+                                    value={searchQuery}
+                                    onChange={(e) => setSearchQuery(e.target.value)}
+                                    style={{ width: '100%', padding: '10px 16px', borderRadius: '20px', border: '1px solid #444', background: '#2C2C2C', color: 'white' }}
+                                />
+                             )}
+                         </div>
+                        <div style={{ display: 'flex', gap: '8px', padding: '4px', background: '#2C2C2C', borderRadius: '24px' }}>
+                             {(['record', 'sessions'] as ActiveTab[]).map(tab => (
+                                <button
+                                    key={tab}
+                                    onClick={() => setActiveTab(tab)}
+                                    style={{
+                                        padding: '8px 16px',
+                                        borderRadius: '20px',
+                                        border: 'none',
+                                        background: activeTab === tab ? '#00A99D' : 'transparent',
+                                        color: 'white',
+                                        cursor: 'pointer',
+                                        fontWeight: 600
+                                    }}>
+                                     {t(tab)}
+                                </button>
+                             ))}
+                        </div>
+                    </div>
+                )}
+                
+                {renderView()}
+
+            </main>
+            
+            <footer style={styles.footer}>
+                <p>&copy; {new Date().getFullYear()} Verbatim. {t('footerText')}</p>
+            </footer>
+
+            {actionModalData && (
+                <ActionHandlerModal
+                    modalData={actionModalData}
+                    onClose={() => setActionModalData(null)}
+                    user={user}
+                    activeSession={activeSession}
+                />
+            )}
+            
+            {faqModalOpen && <FAQModal onClose={() => setFaqModalOpen(false)} />}
+            
+            {audioDeviceModalOpen && (
+                <Modal title={t('selectAudioDeviceTitle')} onClose={() => setAudioDeviceModalOpen(false)}>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+                        <p>{t('selectAudioDeviceInstruction')}</p>
+                        <select
+                            value={selectedDeviceId}
+                            onChange={(e) => setSelectedDeviceId(e.target.value)}
+                            style={{ padding: '10px', borderRadius: '8px', background: '#2C2C2C', color: 'white', border: '1px solid #444' }}
+                        >
+                            {audioDevices.map(device => (
+                                <option key={device.deviceId} value={device.deviceId}>{device.label || `Microphone ${audioDevices.indexOf(device) + 1}`}</option>
+                            ))}
+                        </select>
+                        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '12px' }}>
+                            <button style={{...styles.button, backgroundColor: '#444'}} onClick={() => setAudioDeviceModalOpen(false)}>{t('cancel')}</button>
+                            <button style={styles.button} onClick={startRecording}>{t('start')}</button>
+                        </div>
+                    </div>
+                </Modal>
+            )}
+
+        </div>
+    );
+}
+
+// ... All other components (Recorder, SessionsList, etc.) go here ...
+const Recorder: React.FC<{
+    isRecording: boolean;
+    isAnalyzing: boolean;
+    onStart: () => void;
+    onStop: () => void;
+    errorMessage: string;
+    onTogglePiP: () => void;
+    isPiP: boolean;
+    onToggleKeepAwake: () => void;
+    keepScreenAwake: boolean;
+}> = ({ isRecording, isAnalyzing, onStart, onStop, errorMessage, onTogglePiP, isPiP, onToggleKeepAwake, keepScreenAwake }) => {
+    
+    const platform = getPlatform();
+
+    const recorderStyles: { [key: string]: CSSProperties } = {
+        container: {
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center',
+            justifyContent: 'center',
+            textAlign: 'center',
+            flex: 1,
+            gap: '24px',
+        },
+        recordButton: {
+            width: '150px',
+            height: '150px',
+            borderRadius: '50%',
+            border: '5px solid #00A99D',
+            backgroundColor: isRecording ? '#dc3545' : '#1A1A1A',
+            color: 'white',
+            fontSize: isRecording ? '1.5rem' : '4rem',
+            cursor: 'pointer',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            transition: 'all 0.3s ease',
+            boxShadow: isRecording ? '0 0 20px 5px rgba(220, 53, 69, 0.5)' : '0 0 20px 5px rgba(0, 169, 157, 0.3)',
+        },
+        statusText: {
+            fontSize: '1.2rem',
+            fontWeight: 600,
+            minHeight: '2rem',
+        },
+        errorText: {
+            color: '#dc3545',
+            marginTop: '16px',
+        },
+        controls: {
+            display: 'flex',
+            gap: '16px',
+            marginTop: '20px',
+            alignItems: 'center',
+        },
+        controlButton: {
+            background: '#2C2C2C',
+            border: '1px solid #444',
+            color: '#eee',
+            padding: '10px 16px',
+            borderRadius: '20px',
+            cursor: 'pointer'
+        },
+        checkboxContainer: {
+            display: 'flex',
+            alignItems: 'center',
+            gap: '8px',
+            cursor: 'pointer'
+        }
     };
 
-    if (isLoading) {
-        return <LoadingSpinner />;
+    let status;
+    if (isAnalyzing) {
+        status = t('analyzing');
+    } else if (isRecording) {
+        status = t('recording');
+    } else {
+        status = t('tapToRecord');
     }
 
     return (
-        <div className="app-container">
-            <style>{globalStyles}</style>
-
-            <main>
-                {selectedSession ? (
-                    <SessionDetail
-                        session={selectedSession}
-                        onBack={handleBackToList}
-                        onTakeAction={handleTakeAction}
-                        onCopy={handleCopyMarkdown}
-                        onDownload={handleDownloadMarkdown}
-                        renderSpeaker={renderSpeaker}
-                    />
-                ) : (
-                   <>
-                        {activeTab === 'record' && (
-                            <RecordScreen
-                                isRecording={isRecording}
-                                recordingTime={recordingTime}
-                                onStart={handleStartRecordingClick}
-                                onStop={handleStopRecording}
-                                onTogglePip={togglePip}
-                                keepAwake={keepAwake}
-                                onKeepAwakeChange={setKeepAwake}
-                            />
-                        )}
-                        {activeTab === 'sessions' && (
-                             <SessionList
-                                sessions={filteredSessions}
-                                onSelectSession={handleSelectSession}
-                                onDeleteSession={handleDeleteSession}
-                                searchQuery={searchQuery}
-                                onSearchChange={(e) => setSearchQuery(e.target.value)}
-                                user={user}
-                                onShowFaq={() => setShowFaq(true)}
-                            />
-                        )}
-                   </>
-                )}
-            </main>
-
-            {!selectedSession && !isRecording && (
-                <BottomNav activeTab={activeTab} onTabChange={setActiveTab} />
-            )}
-
-            {/* --- Modals --- */}
-            {isAnalyzing && <LoadingModal text={t.analyzing} />}
-            {error && <ErrorModal message={error} onClose={() => setError(null)} />}
-            {showActionModal && <ActionModal data={showActionModal} onClose={() => setShowActionModal(null)} user={user} />}
-            {showDeviceSelector && (
-                <AudioDeviceSelector
-                    devices={availableDevices}
-                    onDeviceSelected={handleDeviceSelected}
-                    onClose={() => setShowDeviceSelector(false)}
-                />
-            )}
-             {showFaq && <FaqModal onClose={() => setShowFaq(false)} />}
-             {showLoginModal && user === null && (
-                 <LoginModal
-                    onAccountCreated={(newUser) => {
-                        setUser(newUser);
-                        setShowLoginModal(false);
-                    }}
-                    onCancel={() => {
-                        setShowLoginModal(false);
-                        setPendingAction(null);
-                    }}
-                 />
-             )}
-        </div>
-    );
-};
-
-// --- Components ---
-
-const BottomNav = ({ activeTab, onTabChange }: { activeTab: ActiveTab, onTabChange: (tab: ActiveTab) => void }) => {
-    const navItem = (tab: ActiveTab, label: string, icon: string) => (
-        <button
-            className={`nav-button ${activeTab === tab ? 'active' : ''}`}
-            onClick={() => onTabChange(tab)}
-            aria-label={label}
-        >
-            <span className="nav-icon">{icon}</span>
-            <span className="nav-label">{label}</span>
-        </button>
-    );
-
-    return (
-        <nav className="bottom-nav">
-            {navItem('record', t.record, '🎙️')}
-            {navItem('sessions', t.sessions, '📄')}
-        </nav>
-    );
-};
-
-const RecordScreen = ({ isRecording, recordingTime, onStart, onStop, onTogglePip, keepAwake, onKeepAwakeChange }: { isRecording: boolean, recordingTime: number, onStart: () => void, onStop: () => void, onTogglePip: () => void, keepAwake: boolean, onKeepAwakeChange: (value: boolean) => void }) => {
-    const formatTime = (seconds: number) => {
-        const mins = Math.floor(seconds / 60).toString().padStart(2, '0');
-        const secs = (seconds % 60).toString().padStart(2, '0');
-        return `${mins}:${secs}`;
-    };
-
-    return (
-        <div className="record-screen">
-            <div className={`record-screen-content ${isRecording ? 'is-recording' : ''}`}>
-                <p className="record-status-text">
-                    {isRecording ? t.recording : t.tapToRecord}
-                </p>
-                <div className="timer-display">{formatTime(recordingTime)}</div>
-                 <button 
-                    onClick={isRecording ? onStop : onStart} 
-                    className={`mic-button ${isRecording ? 'stop' : 'start'}`}
-                    aria-label={isRecording ? t.stopRecording : t.startRecording}
-                >
-                    <div className="mic-icon-container">
-                       {isRecording ? 
-                        <svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 24 24" fill="currentColor"><path d="M6 6h12v12H6z"/></svg>
-                        :
-                        <svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 24 24" fill="currentColor"><path d="M12 14c1.66 0 2.99-1.34 2.99-3L15 5c0-1.66-1.34-3-3-3S9 3.34 9 5v6c0 1.66 1.34 3 3 3zm5.3-3c0 3-2.54 5.1-5.3 5.1S6.7 14 6.7 11H5c0 3.41 2.72 6.23 6 6.72V21h2v-3.28c3.28-.48 6-3.3 6-6.72h-1.7z"/></svg>
-                        }
-                    </div>
-                </button>
-                <div className="record-screen-options">
-                    {isRecording && getPlatform() !== 'ios' && getPlatform() !== 'android' && (
-                        <button onClick={onTogglePip} className="pip-btn">
-                            {t.toggleMiniView}
-                        </button>
-                    )}
-                    {!isRecording && (
-                        <div className="keep-awake-container">
-                             <div className="keep-awake-toggle">
-                                <label htmlFor="keep-awake-switch" className="keep-awake-label-container">
-                                    <span className="keep-awake-label">{t.keepAwake}</span>
-                                    <div className="switch">
-                                        <input
-                                            id="keep-awake-switch"
-                                            type="checkbox"
-                                            checked={keepAwake}
-                                            onChange={(e) => onKeepAwakeChange(e.target.checked)}
-                                        />
-                                        <span className="slider round"></span>
-                                    </div>
-                                </label>
-                            </div>
-                            <p className="keep-awake-info">{t.keepAwakeInfo}</p>
-                        </div>
-                    )}
-                </div>
-            </div>
-        </div>
-    );
-};
-
-
-const SessionList = ({ sessions, onSelectSession, onDeleteSession, searchQuery, onSearchChange, user, onShowFaq }: { sessions: Session[]; onSelectSession: (s: Session) => void; onDeleteSession: (id: string) => void; searchQuery: string; onSearchChange: (e: React.ChangeEvent<HTMLInputElement>) => void; user: User | null; onShowFaq: () => void; }) => (
-    <div className="page-container">
-        <div className="page-header">
-             <h1 className="page-title">{t.sessions}</h1>
-             <div className="header-actions">
-                 {user && <span className="welcome-user">{t.welcomeUser.replace('{name}', user.name.split(' ')[0])}</span>}
-                <button onClick={onShowFaq} className="faq-button" aria-label={t.faqLink}>?</button>
-             </div>
-        </div>
-        <div className="search-container">
-            <input
-                type="search"
-                placeholder={t.searchPlaceholder}
-                value={searchQuery}
-                onChange={onSearchChange}
-                className="search-input"
-            />
-        </div>
-        
-        {sessions.length > 0 ? (
-            <ul className="session-list">
-                {sessions.map(session => (
-                    <li key={session.id} className="session-item" onClick={() => onSelectSession(session)} tabIndex={0} onKeyDown={e => e.key === 'Enter' && onSelectSession(session)}>
-                        <div className="session-item-content">
-                            <h3>{session.metadata.title}</h3>
-                            <p>{new Date(session.metadata.date).toLocaleString()}</p>
-                            <p className="summary-preview">{session.results.summary.slice(0, 100)}...</p>
-                        </div>
-                         <button className="delete-btn" onClick={(e) => { e.stopPropagation(); onDeleteSession(session.id); }} aria-label={`${t.deleteSession} ${session.metadata.title}`}>
-                            🗑️
-                        </button>
-                    </li>
-                ))}
-            </ul>
-        ) : (
-           user && <WelcomeScreen />
-        )}
-    </div>
-);
-
-const WelcomeScreen = () => (
-    <div className="welcome-screen">
-        <img src="https://assets-global.website-files.com/6526ada137350b5030229339/6526b15a4606549340b6167c_II-logo-white-cropped.png" alt="Verbatim Logo" className="welcome-logo" />
-        <h2>{t.welcomeMessage}</h2>
-        <p>{t.welcomeSubtext}</p>
-    </div>
-);
-
-
-const Accordion = ({ title, children, defaultOpen = false }: AccordionProps) => {
-    const [isOpen, setIsOpen] = useState(defaultOpen);
-    return (
-        <div className={`accordion-item ${isOpen ? 'open' : ''}`}>
-            <button className="accordion-header" onClick={() => setIsOpen(!isOpen)}>
-                <h3>{title}</h3>
-                <span className="accordion-icon">{isOpen ? '−' : '+'}</span>
+        <div style={recorderStyles.container}>
+            <button style={recorderStyles.recordButton} onClick={isRecording ? onStop : onStart} disabled={isAnalyzing}>
+                {isAnalyzing ? '...' : (isRecording ? '⏹️' : '🎤')}
             </button>
-            {isOpen && <div className="accordion-content">{children}</div>}
+            <p style={recorderStyles.statusText}>{status}</p>
+            {errorMessage && <p style={recorderStyles.errorText}>{errorMessage}</p>}
+             <div style={recorderStyles.controls}>
+                {(platform === 'macos' || platform === 'windows') && (
+                    <button style={recorderStyles.controlButton} onClick={onTogglePiP} disabled={!isRecording && !isPiP}>
+                        {t('toggleMiniView')}
+                    </button>
+                )}
+                 <label style={recorderStyles.checkboxContainer} title={t('keepAwakeInfo')}>
+                    <input type="checkbox" checked={keepScreenAwake} onChange={onToggleKeepAwake} />
+                    {t('keepAwake')}
+                </label>
+            </div>
+            
+            <Accordion title={t('recordPhoneCallTitle')}>
+                <p>{t('recordPhoneCallInstruction')}</p>
+            </Accordion>
         </div>
     );
 };
 
-const SessionDetail = ({ session, onBack, onTakeAction, onCopy, onDownload, renderSpeaker }: { session: Session; onBack: () => void; onTakeAction: (item: string) => void; onCopy: (s: Session) => void; onDownload: (s: Session) => void; renderSpeaker: (sessionId: string, speakerId: string, speakers: Record<string, string>) => React.ReactNode; }) => {
-     const createMarkup = (htmlContent: string) => {
-        return { __html: marked(htmlContent) };
+const SessionsList: React.FC<{
+    sessions: Session[];
+    onSelectSession: (session: Session) => void;
+    onDeleteSession: (sessionId: string) => void;
+}> = ({ sessions, onSelectSession, onDeleteSession }) => {
+    
+    if (sessions.length === 0) {
+        return (
+            <div style={{ textAlign: 'center', color: '#888', marginTop: '50px' }}>
+                <h2>{t('welcomeMessage')}</h2>
+                <p>{t('welcomeSubtext')}</p>
+            </div>
+        );
+    }
+    
+    return (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+            {sessions.map(session => (
+                <SessionItem key={session.id} session={session} onSelect={onSelectSession} onDelete={onDeleteSession} />
+            ))}
+        </div>
+    );
+};
+
+const SessionItem: React.FC<{
+    session: Session;
+    onSelect: (session: Session) => void;
+    onDelete: (sessionId: string) => void;
+}> = ({ session, onSelect, onDelete }) => {
+    
+    const [confirmDelete, setConfirmDelete] = useState(false);
+
+    const handleDelete = (e: React.MouseEvent) => {
+        e.stopPropagation();
+        if (confirmDelete) {
+            onDelete(session.id);
+        } else {
+            setConfirmDelete(true);
+            setTimeout(() => setConfirmDelete(false), 3000); // Reset after 3 seconds
+        }
     };
     
-    let transcriptHtml = session.results.transcript;
-    Object.entries(session.speakers).forEach(([id, name]) => {
-        const regex = new RegExp(`(${id}):`, 'g');
-        transcriptHtml = transcriptHtml.replace(regex, `<strong>${name}:</strong>`);
-    });
-
-    return (
-        <div className="page-container session-detail">
-            <div className="page-header sticky">
-                <button onClick={onBack} className="back-btn">&larr; {t.backToList}</button>
-                 <div className="export-buttons">
-                    <button onClick={() => onCopy(session)}>{t.copyMarkdown}</button>
-                    <button onClick={() => onDownload(session)}>{t.downloadMarkdown}</button>
-                </div>
-            </div>
-            <div className="session-detail-content">
-                <h2>{session.metadata.title}</h2>
-                <p className="session-meta">
-                    {new Date(session.metadata.date).toLocaleString()}
-                    {session.metadata.location !== t.locationUnavailable && (
-                        <>
-                            {' | '}
-                            <a href={session.metadata.mapUrl} target="_blank" rel="noopener noreferrer">
-                               📍 {session.metadata.location}
-                            </a>
-                        </>
-                    )}
-                </p>
-    
-                <Accordion title={t.summaryHeader} defaultOpen={true}>
-                    <p>{session.results.summary}</p>
-                </Accordion>
-                <Accordion title={t.actionItemsHeader} defaultOpen={true}>
-                    {session.results.actionItems.length > 0 ? (
-                        <ul>
-                            {session.results.actionItems.map((item, index) => (
-                                <li key={index}>
-                                    <span>{item}</span>
-                                    <button className="action-btn" onClick={() => onTakeAction(item)}>{t.takeAction}</button>
-                                </li>
-                            ))}
-                        </ul>
-                    ) : <p>{t.noActionDetermined}</p>}
-                </Accordion>
-                <Accordion title={t.speakersHeader}>
-                    <div className="speaker-list">
-                        {Object.keys(session.speakers).map(speakerId => (
-                            <div key={speakerId} className="speaker-item">
-                               {renderSpeaker(session.id, speakerId, session.speakers)}
-                            </div>
-                        ))}
-                    </div>
-                </Accordion>
-                <Accordion title={t.transcriptHeader}>
-                    <div className="transcript-content" dangerouslySetInnerHTML={{ __html: transcriptHtml.replace(/\n/g, '<br />') }}></div>
-                </Accordion>
-            </div>
-        </div>
-    );
-};
-
-const Modal = ({ children, onClose, title }: ModalProps) => (
-    <div className="modal-overlay" onClick={onClose}>
-        <div className="modal-content" onClick={e => e.stopPropagation()}>
-            <div className="modal-header">
-                <h2>{title}</h2>
-                <button onClick={onClose} className="close-btn">&times;</button>
-            </div>
-            <div className="modal-body">
-                {children}
-            </div>
-        </div>
-    </div>
-);
-
-const LoginModal = ({ onAccountCreated, onCancel }: { onAccountCreated: (user: User) => void; onCancel: () => void; }) => {
-    const [step, setStep] = useState<'consent' | 'details'>('consent');
-    const [name, setName] = useState('');
-    const [email, setEmail] = useState('');
-
-    const handleCreateAccount = async () => {
-        if (name && email) {
-            const newUser = await dbService.createUser(name, email);
-            onAccountCreated(newUser);
+    const itemStyles: { [key: string]: CSSProperties } = {
+        card: {
+            backgroundColor: '#1E1E1E',
+            padding: '20px',
+            borderRadius: '12px',
+            cursor: 'pointer',
+            transition: 'transform 0.2s, box-shadow 0.2s',
+            border: '1px solid #333',
+        },
+        title: {
+            margin: '0 0 8px 0',
+            fontSize: '1.2rem',
+            fontWeight: 600,
+            color: '#00A99D'
+        },
+        date: {
+            margin: '0 0 16px 0',
+            fontSize: '0.9rem',
+            color: '#888'
+        },
+        summary: {
+            margin: 0,
+            color: '#ccc',
+            overflow: 'hidden',
+            textOverflow: 'ellipsis',
+            display: '-webkit-box',
+            WebkitLineClamp: 2,
+            WebkitBoxOrient: 'vertical',
+        },
+        actions: {
+            marginTop: '16px',
+            display: 'flex',
+            justifyContent: 'flex-end'
+        },
+        deleteButton: {
+            background: confirmDelete ? '#dc3545' : '#444',
+            color: 'white',
+            border: 'none',
+            padding: '8px 12px',
+            borderRadius: '6px',
+            cursor: 'pointer'
         }
     };
 
     return (
-        <Modal onClose={onCancel} title={step === 'consent' ? t.consentTitle : t.loginTitle}>
-            {step === 'consent' ? (
-                <div className="login-step">
-                    <p>{t.consentInternalUse}</p>
-                    <p>{t.consentNoCopy}</p>
-                    <button onClick={() => setStep('details')} className="modal-button">{t.consentContinue}</button>
-                </div>
-            ) : (
-                <div className="login-step">
-                    <p className="modal-subtitle">{t.loginSubtitle}</p>
-                    <input
-                        type="text"
-                        placeholder={t.nameLabel}
-                        value={name}
-                        onChange={(e) => setName(e.target.value)}
-                        className="modal-input"
-                    />
-                    <input
-                        type="email"
-                        placeholder={t.emailLabel}
-                        value={email}
-                        onChange={(e) => setEmail(e.target.value)}
-                        className="modal-input"
-                    />
-                    <button onClick={handleCreateAccount} disabled={!name || !email} className="modal-button">
-                        {t.continueButton}
-                    </button>
-                </div>
-            )}
-        </Modal>
+        <div style={itemStyles.card} onClick={() => onSelect(session)} role="button" tabIndex={0}>
+            <h3 style={itemStyles.title}>{session.metadata.title}</h3>
+            <p style={itemStyles.date}>{new Date(session.metadata.date).toLocaleString()}</p>
+            <p style={itemStyles.summary}>{session.results.summary}</p>
+             <div style={itemStyles.actions}>
+                <button style={itemStyles.deleteButton} onClick={handleDelete}>
+                    {confirmDelete ? 'Confirm?' : '🗑️'}
+                </button>
+            </div>
+        </div>
     );
 };
 
-const ActionModal = ({ data, onClose, user }: { data: ActionModalData; onClose: () => void; user: User | null }) => {
-    const { type, args } = data;
+const SessionDetail: React.FC<{
+    session: Session;
+    onBack: () => void;
+    onAction: (data: ActionModalData) => void;
+    user: User;
+    onRenameSpeaker: (speakerId: string, newName: string) => void;
+    editingSpeaker: EditingSpeaker | null;
+    onSetEditingSpeaker: (speakerId: string) => void;
+}> = ({ session, onBack, onAction, user, onRenameSpeaker, editingSpeaker, onSetEditingSpeaker }) => {
 
-    const renderContent = () => {
+    const [copied, setCopied] = useState(false);
+
+    const formatMarkdown = () => {
+        let markdown = `# ${session.metadata.title}\n\n`;
+        markdown += `**Date:** ${new Date(session.metadata.date).toLocaleString()}\n`;
+        if (session.metadata.location !== t('locationUnavailable')) {
+            markdown += `**Location:** [${session.metadata.location}](${session.metadata.mapUrl})\n\n`;
+        }
+        markdown += `## ${t('summaryHeader')}\n${session.results.summary}\n\n`;
+        markdown += `## ${t('actionItemsHeader')}\n`;
+        session.results.actionItems.forEach(item => markdown += `- ${item}\n`);
+        markdown += `\n## ${t('transcriptHeader')}\n`;
+        // Replace speaker labels in transcript for markdown
+        let transcriptWithNames = session.results.transcript;
+        Object.entries(session.speakers).forEach(([id, name]) => {
+             transcriptWithNames = transcriptWithNames.replace(new RegExp(`\\b${id}\\b`, 'g'), name);
+        });
+        markdown += transcriptWithNames;
+        return markdown;
+    };
+
+    const copyMarkdown = () => {
+        navigator.clipboard.writeText(formatMarkdown());
+        setCopied(true);
+        setTimeout(() => setCopied(false), 2000);
+    };
+
+    const downloadMarkdown = () => {
+        const blob = new Blob([formatMarkdown()], { type: 'text/markdown' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `${session.metadata.title.replace(/ /g, '_')}.md`;
+        a.click();
+        URL.revokeObjectURL(url);
+    };
+
+    const detailStyles: { [key: string]: CSSProperties } = {
+        container: {
+            display: 'flex',
+            flexDirection: 'column',
+            gap: '24px'
+        },
+        header: {
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center'
+        },
+        backButton: { background: 'none', border: '1px solid #444', color: 'white', padding: '10px 16px', borderRadius: '8px', cursor: 'pointer' },
+        exportButtons: { display: 'flex', gap: '12px' },
+        metadata: {
+            background: '#1E1E1E',
+            padding: '16px',
+            borderRadius: '8px',
+            border: '1px solid #333'
+        },
+        speakerTag: {
+             background: '#333',
+             padding: '4px 8px',
+             borderRadius: '4px',
+             cursor: 'pointer',
+             display: 'inline-flex',
+             alignItems: 'center',
+             gap: '6px'
+        }
+    };
+    
+    return (
+        <div style={detailStyles.container}>
+            <div style={detailStyles.header}>
+                <button style={detailStyles.backButton} onClick={onBack}>&larr; {t('backToList')}</button>
+                <div style={detailStyles.exportButtons}>
+                    <button style={styles.button} onClick={copyMarkdown}>
+                        {copied ? t('copiedSuccess') : t('copyMarkdown')}
+                    </button>
+                    <button style={{...styles.button, backgroundColor: '#444'}} onClick={downloadMarkdown}>{t('downloadMarkdown')}</button>
+                </div>
+            </div>
+            
+            <div style={detailStyles.metadata}>
+                <h2>{session.metadata.title}</h2>
+                <p style={{color: '#888'}}>
+                    {new Date(session.metadata.date).toLocaleString()}
+                    {session.metadata.location !== t('locationUnavailable') && (
+                        <span> | <a href={session.metadata.mapUrl} target="_blank" rel="noopener noreferrer" style={{color: '#00A99D'}}>{t('meetingLocation')} {session.metadata.location}</a></span>
+                    )}
+                </p>
+            </div>
+
+            <Accordion title={t('summaryHeader')} defaultOpen>
+                <div dangerouslySetInnerHTML={{ __html: marked(session.results.summary) }} />
+            </Accordion>
+            
+            <Accordion title={t('actionItemsHeader')} defaultOpen>
+                <ul style={{ listStyle: 'none', padding: 0 }}>
+                    {session.results.actionItems.map((item, index) => (
+                        <li key={index} style={{ marginBottom: '12px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                            <span>- {item}</span>
+                            <button style={{ ...styles.button, fontSize: '0.9rem', padding: '8px 16px' }} onClick={() => onAction({ type: 'auto', sourceItem: item })}>
+                                {t('takeAction')}
+                            </button>
+                        </li>
+                    ))}
+                </ul>
+            </Accordion>
+            
+            <Accordion title={t('speakersHeader')}>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '12px' }}>
+                    {Object.entries(session.speakers).map(([id, name]) => (
+                        <div key={id}>
+                            {editingSpeaker?.speakerId === id ? (
+                                <input
+                                    type="text"
+                                    defaultValue={name}
+                                    onBlur={(e) => onRenameSpeaker(id, e.target.value)}
+                                    onKeyDown={(e) => e.key === 'Enter' && onRenameSpeaker(id, (e.target as HTMLInputElement).value)}
+                                    autoFocus
+                                    style={{ padding: '4px 8px', borderRadius: '4px', border: '1px solid #00A99D', background: '#1E1E1E', color: 'white' }}
+                                />
+                            ) : (
+                                <span style={detailStyles.speakerTag} onClick={() => onSetEditingSpeaker(id)}>
+                                    {name} <span style={{fontSize: '0.8em'}}>✏️</span>
+                                </span>
+                            )}
+                        </div>
+                    ))}
+                </div>
+            </Accordion>
+
+            <Accordion title={t('transcriptHeader')}>
+                 <div style={{ whiteSpace: 'pre-line', lineHeight: '1.6' }} dangerouslySetInnerHTML={{ __html: marked(
+                    Object.entries(session.speakers).reduce((text, [id, name]) => {
+                        return text.replace(new RegExp(`\\b${id}\\b:`, 'g'), `**${name}:**`);
+                    }, session.results.transcript)
+                 )}} />
+            </Accordion>
+        </div>
+    );
+};
+
+// ... More components: Modal, Accordion, ActionHandlerModal, FAQModal
+const Modal: React.FC<ModalProps> = ({ children, onClose, title }) => {
+    
+    const modalStyles: { [key: string]: CSSProperties } = {
+        overlay: {
+            position: 'fixed',
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            backgroundColor: 'rgba(0, 0, 0, 0.7)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            zIndex: 1000,
+        },
+        content: {
+            backgroundColor: '#1E1E1E',
+            padding: '24px',
+            borderRadius: '12px',
+            width: '90%',
+            maxWidth: '500px',
+            maxHeight: '90vh',
+            overflowY: 'auto',
+            border: '1px solid #333',
+        },
+        header: {
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+            marginBottom: '16px',
+        },
+        title: {
+            margin: 0,
+            fontSize: '1.4rem'
+        },
+        closeButton: {
+            background: 'none',
+            border: 'none',
+            color: 'white',
+            fontSize: '1.5rem',
+            cursor: 'pointer'
+        }
+    };
+    
+    return (
+        <div style={modalStyles.overlay} onClick={onClose}>
+            <div style={modalStyles.content} onClick={e => e.stopPropagation()}>
+                <div style={modalStyles.header}>
+                    <h2 style={modalStyles.title}>{title}</h2>
+                    <button style={modalStyles.closeButton} onClick={onClose}>&times;</button>
+                </div>
+                {children}
+            </div>
+        </div>
+    );
+};
+
+const Accordion: React.FC<AccordionProps> = ({ title, children, defaultOpen = false }) => {
+    const [isOpen, setIsOpen] = useState(defaultOpen);
+    
+    const accordionStyles: { [key: string]: CSSProperties } = {
+        container: {
+            backgroundColor: '#1E1E1E',
+            borderRadius: '8px',
+            border: '1px solid #333',
+            marginBottom: '16px'
+        },
+        header: {
+            padding: '16px',
+            cursor: 'pointer',
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+        },
+        title: {
+            margin: 0,
+            fontSize: '1.2rem',
+            fontWeight: 600
+        },
+        content: {
+            padding: '0 16px 16px 16px',
+            borderTop: isOpen ? '1px solid #333' : 'none',
+        }
+    };
+    
+    return (
+        <div style={accordionStyles.container}>
+            <div style={accordionStyles.header} onClick={() => setIsOpen(!isOpen)}>
+                <h3 style={accordionStyles.title}>{title}</h3>
+                <span>{isOpen ? '−' : '+'}</span>
+            </div>
+            {isOpen && <div style={accordionStyles.content}>{children}</div>}
+        </div>
+    );
+};
+
+
+const ActionHandlerModal: React.FC<{
+    modalData: ActionModalData;
+    onClose: () => void;
+    user: User;
+    activeSession: Session | null;
+}> = ({ modalData, onClose, user, activeSession }) => {
+    const [loading, setLoading] = useState(true);
+    const [action, setAction] = useState<any>(null);
+    const [error, setError] = useState('');
+    const [copied, setCopied] = useState(false);
+
+    const createCalendarEventFunctionDeclaration: FunctionDeclaration = {
+        name: 'create_calendar_event',
+        parameters: {
+            type: Type.OBJECT,
+            description: 'Creates a Google Calendar event.',
+            properties: {
+                title: { type: Type.STRING, description: 'The title of the event.' },
+                description: { type: Type.STRING, description: 'The description for the event.' },
+                date: { type: Type.STRING, description: 'The date of the event in YYYY-MM-DD format.' },
+                time: { type: Type.STRING, description: 'The time of the event in 24-hour HH:MM format.' },
+            },
+            required: ['title', 'date', 'time'],
+        },
+    };
+     const draftEmailFunctionDeclaration: FunctionDeclaration = {
+        name: 'draft_email',
+        parameters: {
+            type: Type.OBJECT,
+            description: 'Drafts an email.',
+            properties: {
+                to: { type: Type.STRING, description: 'The recipient\'s email address.' },
+                subject: { type: Type.STRING, description: 'The subject of the email.' },
+                body: { type: Type.STRING, description: 'The body content of the email.' },
+            },
+            required: ['to', 'subject', 'body'],
+        },
+    };
+    const draftInvoiceEmailFunctionDeclaration: FunctionDeclaration = {
+        name: 'draft_invoice_email',
+        parameters: {
+            type: Type.OBJECT,
+            description: 'Drafts an email with an invoice for a client.',
+            properties: {
+                recipientName: { type: Type.STRING, description: 'The name of the person or company receiving the invoice.'},
+                to: { type: Type.STRING, description: 'The recipient\'s email address.'},
+                itemDescription: { type: Type.STRING, description: 'A brief description of the item or service being invoiced.' },
+                amount: { type: Type.NUMBER, description: 'The numerical amount due.'},
+                currencySymbol: { type: Type.STRING, description: 'The currency symbol, e.g., $, €, £.'}
+            },
+            required: ['recipientName', 'to', 'itemDescription', 'amount', 'currencySymbol'],
+        },
+    };
+    const initiatePhoneCallFunctionDeclaration: FunctionDeclaration = {
+        name: 'initiate_phone_call',
+        parameters: {
+            type: Type.OBJECT,
+            description: 'Initiates a phone call.',
+            properties: {
+                phoneNumber: { type: Type.STRING, description: 'The phone number to call.' },
+                reason: { type: Type.STRING, description: 'A brief summary of why the call is being made.' },
+            },
+            required: ['phoneNumber'],
+        },
+    };
+    const createDocumentFunctionDeclaration: FunctionDeclaration = {
+        name: 'create_document',
+        parameters: {
+            type: Type.OBJECT,
+            description: 'Creates a new document, like a Google Doc.',
+            properties: {
+                title: { type: Type.STRING, description: 'The suggested title for the document.' },
+                content: { type: Type.STRING, description: 'The suggested initial content for the document.' },
+            },
+            required: ['title', 'content'],
+        },
+    };
+
+    useEffect(() => {
+        const determineAction = async () => {
+            if (modalData.type === 'auto' && modalData.sourceItem && activeSession) {
+                setLoading(true);
+                setError('');
+                try {
+                    const prompt = t('actionPrompt', {
+                        meetingTitle: activeSession.metadata.title,
+                        meetingDate: new Date(activeSession.metadata.date).toLocaleDateString(),
+                        meetingSummary: activeSession.results.summary,
+                        actionItemText: modalData.sourceItem,
+                    });
+
+                    const response = await ai.models.generateContent({
+                        model: 'gemini-2.5-flash',
+// FIX: Using a simple string for 'contents' is the correct format for single-turn requests with function calling. The 'role' is implicit.
+                        contents: prompt,
+                        config: {
+                            tools: [{ functionDeclarations: [
+                                createCalendarEventFunctionDeclaration, 
+                                draftEmailFunctionDeclaration, 
+                                draftInvoiceEmailFunctionDeclaration, 
+                                initiatePhoneCallFunctionDeclaration, 
+                                createDocumentFunctionDeclaration
+                            ]}],
+                        },
+                    });
+                    
+                    if (response.functionCalls && response.functionCalls.length > 0) {
+                        const functionCall = response.functionCalls[0];
+                        setAction({ type: functionCall.name, args: functionCall.args });
+                    } else {
+                        setAction({ type: 'unknown' });
+                    }
+                } catch (e) {
+                    console.error("Error determining action:", e);
+                    setError(t('actionError'));
+                } finally {
+                    setLoading(false);
+                }
+            } else {
+                setAction({ type: modalData.type, args: modalData.args });
+                setLoading(false);
+            }
+        };
+
+        determineAction();
+    }, [modalData, activeSession]);
+
+    const handleCopyAndOpen = (content: string, url: string) => {
+        navigator.clipboard.writeText(content);
+        setCopied(true);
+        window.open(url, '_blank');
+        setTimeout(() => setCopied(false), 2000);
+    };
+
+    const renderAction = () => {
+        if (loading) return <div>{t('analyzing')}</div>;
+        if (error) return <div style={{ color: '#dc3545' }}>{error}</div>;
+        if (!action) return null;
+
+        const { type, args } = action;
+        const inputStyle = { width: 'calc(100% - 20px)', padding: '10px', margin: '8px 0', borderRadius: '4px', border: '1px solid #444', background: '#2C2C2C', color: 'white' };
+        const labelStyle = { fontWeight: 600, display: 'block' };
+        const buttonContainerStyle = { display: 'flex', justifyContent: 'flex-end', marginTop: '20px' };
+
         switch (type) {
             case 'create_calendar_event':
-                const gCalUrl = `https://www.google.com/calendar/render?action=TEMPLATE&text=${encodeURIComponent(args.title)}&dates=${args.date.replace(/-/g, '')}T${args.time.replace(/:/g, '')}00/${args.date.replace(/-/g, '')}T${(parseInt(args.time.split(':')[0]) + 1).toString().padStart(2, '0')}${args.time.split(':')[1]}00&details=${encodeURIComponent(args.description)}`;
+                const gCalUrl = `https://www.google.com/calendar/render?action=TEMPLATE&text=${encodeURIComponent(args.title)}&dates=${args.date.replace(/-/g, '')}T${args.time.replace(':', '')}00/${args.date.replace(/-/g, '')}T${(parseInt(args.time.split(':')[0]) + 1).toString().padStart(2, '0')}${args.time.split(':')[1]}00&details=${encodeURIComponent(args.description || '')}`;
                 return (
                     <div>
-                        <h3>{t.createCalendarEvent}</h3>
-                        <p><strong>{t.titleLabel}</strong> {args.title}</p>
-                        <p><strong>{t.descriptionLabel}</strong> {args.description}</p>
-                        <p><strong>{t.dateLabel}</strong> {args.date}</p>
-                        <p><strong>{t.timeLabel}</strong> {args.time}</p>
-                        <a href={gCalUrl} target="_blank" rel="noopener noreferrer" className="modal-button">{t.openInCalendar}</a>
+                        <label style={labelStyle}>{t('titleLabel')}</label> <input style={inputStyle} type="text" defaultValue={args.title} />
+                        <label style={labelStyle}>{t('descriptionLabel')}</label> <textarea style={{...inputStyle, height: '80px'}} defaultValue={args.description}></textarea>
+                        <label style={labelStyle}>{t('dateLabel')}</label> <input style={inputStyle} type="date" defaultValue={args.date} />
+                        <label style={labelStyle}>{t('timeLabel')}</label> <input style={inputStyle} type="time" defaultValue={args.time} />
+                        <div style={buttonContainerStyle}><a href={gCalUrl} target="_blank" rel="noopener noreferrer" style={{ ...styles.button, textDecoration: 'none' }}>{t('openInCalendar')}</a></div>
                     </div>
                 );
             case 'draft_email':
                 const mailtoUrl = `mailto:${args.to}?subject=${encodeURIComponent(args.subject)}&body=${encodeURIComponent(args.body)}`;
                 return (
                     <div>
-                        <h3>{t.draftEmail}</h3>
-                        <p><strong>{t.toLabel}</strong> {args.to}</p>
-                        <p><strong>{t.subjectLabel}</strong> {args.subject}</p>
-                        <p><strong>{t.bodyLabel}</strong> {args.body}</p>
-                        <a href={mailtoUrl} target="_blank" rel="noopener noreferrer" className="modal-button">{t.openInEmailApp}</a>
+                        <label style={labelStyle}>{t('toLabel')}</label> <input style={inputStyle} type="email" defaultValue={args.to} />
+                        <label style={labelStyle}>{t('subjectLabel')}</label> <input style={inputStyle} type="text" defaultValue={args.subject} />
+                        <label style={labelStyle}>{t('bodyLabel')}</label> <textarea style={{...inputStyle, height: '120px'}} defaultValue={args.body}></textarea>
+                        <div style={buttonContainerStyle}><a href={mailtoUrl} target="_blank" rel="noopener noreferrer" style={{ ...styles.button, textDecoration: 'none' }}>{t('openInEmailApp')}</a></div>
                     </div>
                 );
              case 'draft_invoice_email':
-                const emailBody = t.invoiceEmailBody
-                    .replace('{recipientName}', args.recipientName)
-                    .replace('{itemDescription}', args.itemDescription)
-                    .replace('{currencySymbol}', args.currencySymbol)
-                    .replace('{amount}', args.amount.toFixed(2))
-                    .replace('{userName}', user?.name || '');
-                const invoiceMailtoUrl = `mailto:${args.to}?subject=${encodeURIComponent(args.subject)}&body=${encodeURIComponent(emailBody)}`;
+                const invoiceBody = t('invoiceEmailBody', {
+                    recipientName: args.recipientName,
+                    itemDescription: args.itemDescription,
+                    currencySymbol: args.currencySymbol,
+                    amount: args.amount,
+                    userName: user.name.split(' ')[0]
+                });
+                const invoiceMailtoUrl = `mailto:${args.to}?subject=${encodeURIComponent(`Invoice for ${args.itemDescription}`)}&body=${encodeURIComponent(invoiceBody)}`;
                 return (
                     <div>
-                        <h3>{t.draftInvoiceEmail}</h3>
-                        <p><strong>{t.toLabel}</strong> {args.to}</p>
-                        <p><strong>{t.recipientNameLabel}</strong> {args.recipientName}</p>
-                        <p><strong>{t.subjectLabel}</strong> {args.subject}</p>
-                        <p><strong>{t.amountLabel}</strong> {args.currencySymbol}{args.amount.toFixed(2)}</p>
-                        <p><strong>{t.descriptionLabel}</strong> {args.itemDescription}</p>
-                        <div className="code-block">{emailBody}</div>
-                        <a href={invoiceMailtoUrl} target="_blank" rel="noopener noreferrer" className="modal-button">{t.openInEmailApp}</a>
+                        <label style={labelStyle}>{t('recipientNameLabel')}</label> <input style={inputStyle} type="text" defaultValue={args.recipientName} />
+                        <label style={labelStyle}>{t('toLabel')}</label> <input style={inputStyle} type="email" defaultValue={args.to} />
+                        <label style={labelStyle}>{t('amountLabel')}</label> <input style={inputStyle} type="text" defaultValue={`${args.currencySymbol}${args.amount}`} />
+                        <label style={labelStyle}>{t('bodyLabel')}</label> <textarea style={{...inputStyle, height: '150px'}} defaultValue={invoiceBody}></textarea>
+                        <div style={buttonContainerStyle}><a href={invoiceMailtoUrl} target="_blank" rel="noopener noreferrer" style={{ ...styles.button, textDecoration: 'none' }}>{t('openInEmailApp')}</a></div>
                     </div>
                 );
-             case 'initiate_phone_call':
+            case 'initiate_phone_call':
                 const telUrl = `tel:${args.phoneNumber}`;
                 return (
                     <div>
-                        <h3>{t.initiatePhoneCall}</h3>
-                        <p><strong>{t.phoneNumberLabel}</strong> {args.phoneNumber}</p>
-                        {args.reason && <p><strong>{t.reasonLabel}</strong> {args.reason}</p>}
-                        <a href={telUrl} className="modal-button">{t.callNow}</a>
+                        <label style={labelStyle}>{t('phoneNumberLabel')}</label> <input style={inputStyle} type="tel" defaultValue={args.phoneNumber} />
+                        <label style={labelStyle}>{t('reasonLabel')}</label> <input style={inputStyle} type="text" defaultValue={args.reason} />
+                        <div style={buttonContainerStyle}><a href={telUrl} style={{ ...styles.button, textDecoration: 'none' }}>{t('callNow')}</a></div>
                     </div>
                 );
             case 'create_document':
-                const handleOpenDocs = () => {
-                    navigator.clipboard.writeText(args.content).then(() => {
-                        window.open('https://docs.new', '_blank');
-                    });
-                };
-                 return (
+                return (
                     <div>
-                        <h3>{t.createDocument}</h3>
-                        <p>{t.createDocInfo}</p>
-                        <p><strong>{t.suggestedTitle}</strong> {args.title}</p>
-                        <div className="code-block">{args.content}</div>
-                        <button onClick={handleOpenDocs} className="modal-button">{t.openGoogleDocs}</button>
+                        <p>{t('createDocInfo')}</p>
+                        <label style={labelStyle}>{t('suggestedTitle')}</label> <input style={inputStyle} type="text" readOnly value={args.title} />
+                        <label style={labelStyle}>{t('suggestedContent')}</label> <textarea style={{...inputStyle, height: '120px'}} readOnly value={args.content}></textarea>
+                        <div style={buttonContainerStyle}>
+                            <button style={styles.button} onClick={() => handleCopyAndOpen(args.content, 'https://docs.new')}>
+                                {copied ? t('copiedSuccess') : t('openGoogleDocs')}
+                            </button>
+                        </div>
                     </div>
                 );
-            case 'no_action':
-                 return <p>{t.noActionDetermined}</p>;
             default:
-                return <p>{t.unknownAction}</p>;
+                return (
+                    <div>
+                        <p>{t('noActionDetermined')}</p>
+                        <div style={buttonContainerStyle}><button style={{...styles.button, backgroundColor: '#444'}} onClick={onClose}>{t('cancel')}</button></div>
+                    </div>
+                );
         }
     };
-    return <Modal onClose={onClose} title="Action Details">{renderContent()}</Modal>;
+
+    const getTitle = () => {
+        if (!action) return t('analyzing');
+        switch (action.type) {
+            case 'create_calendar_event': return t('createCalendarEvent');
+            case 'draft_email': return t('draftEmail');
+            case 'draft_invoice_email': return t('draftInvoiceEmail');
+            case 'initiate_phone_call': return t('initiatePhoneCall');
+            case 'create_document': return t('createDocument');
+            default: return t('unknownAction');
+        }
+    };
+    
+    return <Modal title={getTitle()} onClose={onClose}>{renderAction()}</Modal>;
 };
 
-const AudioDeviceSelector = ({ devices, onDeviceSelected, onClose }: { devices: MediaDeviceInfo[]; onDeviceSelected: (deviceId: string) => void; onClose: () => void; }) => {
-    const [selectedDeviceId, setSelectedDeviceId] = useState<string>(devices[0]?.deviceId || '');
-    
-    useEffect(() => {
-        if(devices.length > 0 && !selectedDeviceId) {
-            setSelectedDeviceId(devices[0].deviceId);
-        }
-    }, [devices, selectedDeviceId]);
-
+const FAQModal: React.FC<{ onClose: () => void }> = ({ onClose }) => {
     return (
-        <Modal onClose={onClose} title={t.selectAudioDeviceTitle}>
-            <div className="device-selector">
-                <p>{t.recordPhoneCallInstruction}</p>
-                <select
-                    value={selectedDeviceId}
-                    onChange={(e) => setSelectedDeviceId(e.target.value)}
-                    className="device-select-dropdown"
-                >
-                    {devices.map(device => (
-                        <option key={device.deviceId} value={device.deviceId}>
-                            {device.label || `Microphone ${devices.indexOf(device) + 1}`}
-                        </option>
-                    ))}
-                </select>
-                <div className="modal-actions">
-                    <button onClick={onClose} className="modal-button secondary">{t.cancel}</button>
-                    <button onClick={() => onDeviceSelected(selectedDeviceId)} className="modal-button">{t.start}</button>
+        <Modal title={t('faqTitle')} onClose={onClose}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+                {t('faq').map((item: { q: string, a: string }, index: number) => (
+                    <div key={index}>
+                        <h4 style={{ margin: '0 0 8px 0', color: '#00A99D' }}>{item.q}</h4>
+                        <p style={{ margin: 0, lineHeight: '1.6' }} dangerouslySetInnerHTML={{ __html: item.a }}></p>
+                    </div>
+                ))}
+                <hr style={{ border: '1px solid #333', width: '100%' }} />
+                <div style={{ textAlign: 'center' }}>
+                     <h4>{t('featureShowcase')}</h4>
+                    <ul style={{listStyle: 'none', padding: 0, display: 'flex', flexWrap: 'wrap', gap: '10px', justifyContent: 'center'}}>
+                        {t('featureList').map((feat: string) => <li key={feat} style={{background: '#2C2C2C', padding: '6px 12px', borderRadius: '16px'}}>{feat}</li>)}
+                    </ul>
+                </div>
+                <div style={{ textAlign: 'center', color: '#888', marginTop: '20px' }}>
+                    <p>{t('createdBy')} <strong>{t('creatorName')}</strong> (<a href={`mailto:${t('creatorEmail')}`} style={{color: '#00A99D'}}>{t('creatorEmail')}</a>)</p>
+                    <p><em>{t('dedication')}</em></p>
                 </div>
             </div>
         </Modal>
@@ -1680,840 +2032,16 @@ const AudioDeviceSelector = ({ devices, onDeviceSelected, onClose }: { devices: 
 };
 
 
-const FaqModal = ({ onClose }: { onClose: () => void; }) => (
-    <Modal onClose={onClose} title={t.faqTitle}>
-        <div className="faq-content">
-            {t.faq.map((item, index) => (
-                <div key={index} className="faq-item">
-                    <h4>{item.q}</h4>
-                    <p dangerouslySetInnerHTML={{ __html: item.a }}></p>
-                </div>
-            ))}
-            <div className="faq-item creator-info">
-                <h4>{t.createdBy}</h4>
-                <p>
-                    {t.creatorName}<br/>
-                    <a href={`mailto:${t.creatorEmail}`}>{t.creatorEmail}</a>
-                </p>
-                <p><em>{t.dedication}</em></p>
-            </div>
-        </div>
-    </Modal>
-);
-
-const ErrorModal = ({ message, onClose }: { message: string; onClose: () => void; }) => (
-    <Modal onClose={onClose} title="Error">
-        <p>{message}</p>
-        <button onClick={onClose} className="modal-button">Close</button>
-    </Modal>
-);
-
-const LoadingModal = ({ text }: { text: string }) => (
-    <div className="modal-overlay">
-        <div className="loading-content">
-            <div className="spinner"></div>
-            <p>{text}</p>
-        </div>
-    </div>
-);
-
-const LoadingSpinner = () => (
-     <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh', backgroundColor: '#121212' }}>
-        <div className="spinner"></div>
-    </div>
-);
-
-// --- Global Styles ---
-const globalStyles = `
-    :root {
-      --primary-color: #00DAC6;
-      --primary-variant-color: #00BFA5;
-      --secondary-color: #BB86FC;
-      --background-color: #121212;
-      --surface-color: #1E1E1E;
-      --surface-color-2: #272727;
-      --error-color: #CF6679;
-      --text-color: #E0E0E0;
-      --text-muted-color: #A0A0A0;
-      --font-family: 'Poppins', sans-serif;
-      --border-radius: 16px;
-      --box-shadow: 0 4px 20px rgba(0, 0, 0, 0.4);
-      --bottom-nav-height: 70px;
-    }
-    
-    * {
-      box-sizing: border-box;
-      -webkit-tap-highlight-color: transparent;
-    }
-
-    html, body {
-      font-family: var(--font-family);
-      background-color: var(--background-color);
-      color: var(--text-color);
-      margin: 0;
-      -webkit-font-smoothing: antialiased;
-      -moz-osx-smoothing: grayscale;
-      overscroll-behavior-y: contain;
-    }
-
-    #root {
-      display: flex;
-      flex-direction: column;
-      min-height: 100vh;
-      min-height: -webkit-fill-available; /* iOS viewport height fix */
-    }
-    
-    .app-container {
-      display: flex;
-      flex-direction: column;
-      flex: 1;
-    }
-
-    main {
-      flex: 1;
-      padding: 1.5rem 1rem calc(var(--bottom-nav-height) + 1.5rem) 1rem;
-      overflow-y: auto;
-      display: flex;
-      flex-direction: column;
-    }
-    
-    h1, h2, h3 {
-        font-weight: 600;
-        margin: 0;
-    }
-
-    button {
-        font-family: var(--font-family);
-        font-weight: 600;
-    }
-
-    /* Page styles */
-    .page-container {
-        width: 100%;
-        max-width: 800px;
-        margin: 0 auto;
-        animation: fadeIn 0.5s ease-in-out;
-    }
-
-    .page-header {
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-        margin-bottom: 1.5rem;
-    }
-    .page-header.sticky {
-        position: sticky;
-        top: 0;
-        background: rgba(18, 18, 18, 0.85);
-        backdrop-filter: blur(10px);
-        padding: 1rem 0;
-        z-index: 10;
-        margin-bottom: 1rem;
-    }
-
-    .page-title {
-        color: var(--primary-color);
-        font-size: 2rem;
-    }
-
-    .header-actions {
-        display: flex;
-        align-items: center;
-        gap: 1rem;
-    }
-    
-    .welcome-user {
-        font-size: 0.9rem;
-        color: var(--text-muted-color);
-    }
-    
-    .faq-button {
-        background: var(--surface-color-2);
-        color: var(--text-color);
-        border: none;
-        border-radius: 50%;
-        width: 40px;
-        height: 40px;
-        font-size: 1.2rem;
-        cursor: pointer;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-    }
-
-    /* Record Screen */
-    .record-screen {
-        flex: 1;
-        display: flex;
-        flex-direction: column;
-        align-items: center;
-        justify-content: center;
-        text-align: center;
-        height: 100%;
-    }
-    .record-screen-content {
-        display: flex;
-        flex-direction: column;
-        align-items: center;
-        justify-content: center;
-        gap: 1.5rem;
-        transition: all 0.3s ease;
-    }
-
-    .record-status-text {
-        font-size: 1.2rem;
-        color: var(--text-muted-color);
-        height: 1.5em; /* Reserve space */
-    }
-    
-    .timer-display {
-        font-size: 4rem;
-        font-weight: 700;
-        color: var(--text-color);
-        font-family: monospace;
-        height: 1.2em; /* Reserve space */
-        opacity: 0;
-        transform: scale(0.9);
-        transition: all 0.3s ease;
-    }
-
-    .record-screen-content.is-recording .timer-display {
-        opacity: 1;
-        transform: scale(1);
-    }
-
-    .mic-button {
-        width: 150px;
-        height: 150px;
-        border-radius: 50%;
-        border: none;
-        cursor: pointer;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        position: relative;
-        transition: all 0.3s ease;
-        box-shadow: 0 0 0 0 rgba(0, 218, 198, 0.4);
-    }
-    
-    .mic-button.start {
-        background: radial-gradient(circle, var(--primary-variant-color) 0%, var(--primary-color) 100%);
-        animation: pulse 2.5s infinite;
-    }
-    .mic-button.stop {
-        background: var(--error-color);
-    }
-    
-    .mic-button:hover:not(.stop) {
-        transform: scale(1.05);
-    }
-    
-    .mic-icon-container svg {
-        color: var(--background-color);
-    }
-    
-    .pip-btn {
-      background-color: var(--surface-color);
-      border: 1px solid var(--surface-color-2);
-      color: var(--text-color);
-      padding: 0.75rem 1.5rem;
-      border-radius: var(--border-radius);
-      cursor: pointer;
-      transition: background-color 0.2s;
-    }
-    
-    .pip-btn:hover {
-        background-color: var(--surface-color-2);
-    }
-
-    /* Record Screen Options (PiP & Keep Awake) */
-    .record-screen-options {
-        margin-top: 1.5rem;
-        display: flex;
-        flex-direction: column;
-        align-items: center;
-        gap: 1rem;
-        width: 100%;
-        max-width: 320px;
-        min-height: 100px;
-    }
-
-    .keep-awake-container {
-        display: flex;
-        flex-direction: column;
-        align-items: center;
-        gap: 0.75rem;
-        width: 100%;
-        animation: fadeIn 0.5s;
-    }
-    
-    .keep-awake-toggle {
-        width: 100%;
-    }
-
-    .keep-awake-label-container {
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-        width: 100%;
-        cursor: pointer;
-        background-color: var(--surface-color);
-        padding: 0.75rem 1.25rem;
-        border-radius: var(--border-radius);
-        border: 1px solid var(--surface-color-2);
-    }
-
-    .keep-awake-label {
-        font-weight: 600;
-    }
-    
-    .keep-awake-info {
-        font-size: 0.8rem;
-        color: var(--text-muted-color);
-        text-align: center;
-        margin: 0;
-        padding: 0 1rem;
-        max-width: 280px;
-    }
-
-    /* Toggle Switch styles */
-    .switch {
-      position: relative;
-      display: inline-block;
-      width: 50px;
-      height: 28px;
-    }
-
-    .switch input {
-      opacity: 0;
-      width: 0;
-      height: 0;
-    }
-
-    .slider {
-      position: absolute;
-      cursor: pointer;
-      top: 0;
-      left: 0;
-      right: 0;
-      bottom: 0;
-      background-color: var(--surface-color-2);
-      transition: .4s;
-    }
-
-    .slider:before {
-      position: absolute;
-      content: "";
-      height: 20px;
-      width: 20px;
-      left: 4px;
-      bottom: 4px;
-      background-color: white;
-      transition: .4s;
-    }
-
-    input:checked + .slider {
-      background-color: var(--primary-color);
-    }
-
-    input:focus + .slider {
-      box-shadow: 0 0 1px var(--primary-color);
-    }
-
-    input:checked + .slider:before {
-      transform: translateX(22px);
-    }
-
-    .slider.round {
-      border-radius: 34px;
-    }
-
-    .slider.round:before {
-      border-radius: 50%;
-    }
-
-
-    /* Bottom Nav */
-    .bottom-nav {
-        position: fixed;
-        bottom: 0;
-        left: 0;
-        right: 0;
-        height: var(--bottom-nav-height);
-        background: rgba(30, 30, 30, 0.8);
-        backdrop-filter: blur(15px);
-        display: flex;
-        justify-content: space-around;
-        align-items: center;
-        z-index: 1000;
-        border-top: 1px solid rgba(255, 255, 255, 0.1);
-    }
-    
-    .nav-button {
-        background: none;
-        border: none;
-        color: var(--text-muted-color);
-        display: flex;
-        flex-direction: column;
-        align-items: center;
-        justify-content: center;
-        gap: 4px;
-        cursor: pointer;
-        transition: color 0.2s ease;
-        font-size: 0.75rem;
-        padding: 0.5rem;
-        flex: 1;
-        height: 100%;
-    }
-    
-    .nav-button.active {
-        color: var(--primary-color);
-    }
-    .nav-icon {
-        font-size: 1.5rem;
-    }
-
-
-    /* Search */
-    .search-container {
-        margin-bottom: 1.5rem;
-    }
-    .search-input {
-        background-color: var(--surface-color-2);
-        border: 1px solid transparent;
-        border-radius: var(--border-radius);
-        color: var(--text-color);
-        padding: 0.75rem 1rem;
-        font-size: 1rem;
-        width: 100%;
-        transition: border-color 0.2s;
-    }
-    .search-input:focus {
-        outline: none;
-        border-color: var(--primary-color);
-    }
-
-
-    /* Session List */
-    .session-list {
-      list-style: none;
-      padding: 0;
-      margin: 0;
-      display: grid;
-      gap: 1rem;
-    }
-
-    .session-item {
-      background-color: var(--surface-color);
-      border-radius: var(--border-radius);
-      padding: 1.25rem;
-      cursor: pointer;
-      transition: transform 0.2s, box-shadow 0.2s;
-      border: 1px solid var(--surface-color-2);
-      display: flex;
-      justify-content: space-between;
-      align-items: flex-start;
-    }
-    
-    .session-item-content {
-        flex-grow: 1;
-    }
-
-    .session-item:hover {
-      transform: translateY(-4px);
-      box-shadow: var(--box-shadow);
-    }
-    
-    .session-item h3 {
-        margin: 0 0 0.5rem 0;
-        color: var(--text-color);
-    }
-    
-    .session-item p {
-        margin: 0;
-        color: var(--text-muted-color);
-        font-size: 0.9rem;
-    }
-    
-    .summary-preview {
-        margin-top: 0.75rem !important;
-        color: var(--text-color) !important;
-    }
-    
-    .delete-btn {
-        background: none;
-        border: none;
-        color: var(--text-muted-color);
-        cursor: pointer;
-        font-size: 1.2rem;
-        opacity: 0.7;
-        transition: opacity 0.2s, color 0.2s;
-        padding: 0.5rem;
-    }
-
-    .delete-btn:hover {
-        opacity: 1;
-        color: var(--error-color);
-    }
-    
-
-    /* Session Detail */
-    .session-detail-content {
-        padding-top: 1rem;
-    }
-    .back-btn, .export-buttons button {
-      background-color: var(--surface-color-2);
-      border: 1px solid transparent;
-      color: var(--text-color);
-      padding: 0.5rem 1rem;
-      border-radius: 12px;
-      cursor: pointer;
-      transition: background-color 0.2s, border-color 0.2s;
-    }
-
-    .back-btn:hover, .export-buttons button:hover {
-      background-color: #333;
-      border-color: var(--primary-color);
-    }
-    
-    .export-buttons {
-        display: flex;
-        gap: 0.5rem;
-    }
-
-    .session-meta {
-        color: var(--text-muted-color);
-        margin: -0.5rem 0 2rem 0;
-    }
-    .session-meta a {
-        color: var(--secondary-color);
-        text-decoration: none;
-    }
-    
-    /* Accordion */
-    .accordion-item {
-        background-color: var(--surface-color);
-        border-radius: var(--border-radius);
-        margin-bottom: 1rem;
-        border: 1px solid var(--surface-color-2);
-        overflow: hidden;
-    }
-    .accordion-header {
-        background: none;
-        border: none;
-        padding: 1.25rem;
-        width: 100%;
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-        cursor: pointer;
-        color: var(--text-color);
-    }
-    .accordion-header h3 { color: var(--primary-color); }
-    .accordion-icon { font-size: 1.5rem; color: var(--text-muted-color); }
-    .accordion-content {
-        padding: 0 1.25rem 1.25rem 1.25rem;
-        animation: fadeIn 0.3s;
-    }
-    
-    .accordion-content ul {
-      list-style: none;
-      padding-left: 0;
-      margin: 0;
-    }
-    
-    .accordion-content li {
-        padding: 0.75rem 0;
-        border-bottom: 1px solid var(--surface-color-2);
-        display: flex;
-        flex-direction: column;
-        gap: 0.75rem;
-        align-items: flex-start;
-    }
-    @media (min-width: 600px) {
-        .accordion-content li {
-            flex-direction: row;
-            align-items: center;
-            justify-content: space-between;
-        }
-    }
-
-    .accordion-content li:last-child {
-        border-bottom: none;
-    }
-    
-    .action-btn {
-        background-color: var(--secondary-color);
-        color: var(--background-color);
-        border: none;
-        padding: 0.5rem 1rem;
-        border-radius: 10px;
-        cursor: pointer;
-        font-weight: 600;
-        transition: transform 0.2s, opacity 0.2s;
-        flex-shrink: 0;
-    }
-    
-    .action-btn:hover {
-        opacity: 0.9;
-        transform: scale(1.03);
-    }
-
-    .transcript-content {
-      line-height: 1.8;
-      white-space: pre-wrap;
-    }
-    
-    /* Speaker styles */
-    .speaker-list {
-        display: flex;
-        flex-wrap: wrap;
-        gap: 0.75rem;
-    }
-
-    .speaker-item {
-        background-color: var(--surface-color-2);
-        padding: 0.5rem 1rem;
-        border-radius: 10px;
-        display: flex;
-        align-items: center;
-    }
-    
-    .speaker-name {
-        cursor: pointer;
-    }
-    
-    .rename-speaker-icon {
-        margin-left: 0.5rem;
-        opacity: 0.6;
-    }
-    .speaker-name:hover .rename-speaker-icon { opacity: 1; }
-    
-    .speaker-edit-input {
-        background-color: var(--surface-color);
-        border: 1px solid var(--primary-color);
-        color: var(--text-color);
-        border-radius: 8px;
-        padding: 0.5rem;
-        width: 120px;
-    }
-
-
-    /* Modals */
-    .modal-overlay {
-      position: fixed;
-      top: 0;
-      left: 0;
-      right: 0;
-      bottom: 0;
-      background-color: rgba(0, 0, 0, 0.7);
-      display: flex;
-      justify-content: center;
-      align-items: flex-end; /* Mobile-first: bottom */
-      z-index: 2000;
-      animation: fadeIn 0.3s;
-    }
-
-    .modal-content {
-      background-color: var(--surface-color);
-      padding: 1rem 1rem 2rem 1rem;
-      border-radius: var(--border-radius) var(--border-radius) 0 0;
-      width: 100%;
-      max-width: 500px;
-      box-shadow: 0 -10px 30px rgba(0, 0, 0, 0.5);
-      animation: slideUp 0.4s ease-out;
-      max-height: 85vh;
-      overflow-y: auto;
-    }
-    
-    @media (min-width: 600px) {
-        .modal-overlay {
-            align-items: center;
-        }
-        .modal-content {
-            border-radius: var(--border-radius);
-            width: 90%;
-            padding: 2rem;
-        }
-    }
-    
-    .modal-header {
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-        border-bottom: 1px solid var(--surface-color-2);
-        padding-bottom: 1rem;
-        margin-bottom: 1.5rem;
-    }
-    
-    .modal-header h2 {
-        margin: 0;
-        font-size: 1.5rem;
-        color: var(--primary-color);
-    }
-    
-    .close-btn {
-        background: none;
-        border: none;
-        font-size: 2rem;
-        line-height: 1;
-        color: var(--text-muted-color);
-        cursor: pointer;
-    }
-    
-    .modal-button {
-        background-color: var(--primary-color);
-        color: var(--background-color);
-        border: none;
-        padding: 0.9rem 1.5rem;
-        border-radius: 12px;
-        cursor: pointer;
-        font-size: 1rem;
-        width: 100%;
-        margin-top: 1rem;
-        transition: background-color 0.2s;
-        text-align: center;
-        text-decoration: none;
-        display: inline-block;
-    }
-    .modal-button.secondary {
-        background-color: var(--surface-color-2);
-        color: var(--text-color);
-    }
-    
-    .modal-button:disabled {
-        background-color: #555;
-        cursor: not-allowed;
-    }
-    
-    .modal-button:not(:disabled):hover {
-        background-color: var(--primary-variant-color);
-    }
-
-    .device-selector {
-        text-align: center;
-    }
-    
-    .device-select-dropdown {
-        width: 100%;
-        padding: 0.75rem;
-        border-radius: 12px;
-        background-color: var(--surface-color-2);
-        color: var(--text-color);
-        border: 1px solid transparent;
-        font-size: 1rem;
-        margin: 1rem 0;
-    }
-    
-    .modal-actions {
-        display: flex;
-        gap: 1rem;
-        margin-top: 1.5rem;
-    }
-
-    .loading-content {
-      text-align: center;
-      color: white;
-    }
-    
-    .spinner {
-        border: 4px solid rgba(255, 255, 255, 0.2);
-        border-radius: 50%;
-        border-top: 4px solid var(--primary-color);
-        width: 50px;
-        height: 50px;
-        animation: spin 1s linear infinite;
-        margin: 0 auto 1rem;
-    }
-
-    .welcome-screen {
-        text-align: center;
-        padding: 2rem 1rem;
-    }
-    
-    .welcome-logo {
-        width: 80px;
-        height: 80px;
-        margin-bottom: 1.5rem;
-    }
-
-    .code-block {
-        background-color: var(--background-color);
-        padding: 1rem;
-        border-radius: 8px;
-        margin: 1rem 0;
-        max-height: 150px;
-        overflow-y: auto;
-        white-space: pre-wrap;
-        font-family: monospace;
-    }
-    
-    .faq-content h4 {
-        color: var(--primary-color);
-        margin-bottom: 0.5rem;
-        margin-top: 1.5rem;
-    }
-    
-    .faq-content p {
-        margin-top: 0;
-        margin-bottom: 0.5rem;
-        color: var(--text-muted-color);
-        line-height: 1.6;
-    }
-    
-    .faq-item.creator-info {
-        border-top: 1px solid var(--surface-color-2);
-        margin-top: 2rem;
-        padding-top: 1.5rem;
-    }
-    .creator-info a {
-        color: var(--secondary-color);
-    }
-
-    .login-step {
-        display: flex;
-        flex-direction: column;
-        gap: 1rem;
-    }
-    
-    .modal-subtitle {
-        color: var(--text-muted-color);
-        text-align: center;
-        margin-top: 0;
-    }
-    
-    .modal-input {
-        width: 100%;
-        padding: 0.75rem;
-        font-size: 1rem;
-        border-radius: 8px;
-        border: 1px solid var(--surface-color-2);
-        background-color: var(--surface-color-2);
-        color: var(--text-color);
-    }
-
-    @keyframes fadeIn {
-      from { opacity: 0; }
-      to { opacity: 1; }
-    }
-    
-    @keyframes slideUp {
-        from { transform: translateY(50px); opacity: 0; }
-        to { transform: translateY(0); opacity: 1; }
-    }
-
-    @keyframes spin {
-      0% { transform: rotate(0deg); }
-      100% { transform: rotate(360deg); }
-    }
-    
-    @keyframes pulse {
-      0% { box-shadow: 0 0 0 0 rgba(0, 218, 198, 0.4); }
-      70% { box-shadow: 0 0 0 20px rgba(0, 218, 198, 0); }
-      100% { box-shadow: 0 0 0 0 rgba(0, 218, 198, 0); }
-    }
-`;
-
-// --- Root Render ---
 const root = createRoot(document.getElementById('root') as HTMLElement);
 root.render(<App />);
+
+// --- Register Service Worker ---
+if ('serviceWorker' in navigator) {
+    window.addEventListener('load', () => {
+        navigator.serviceWorker.register('/sw.js').then(registration => {
+            console.log('SW registered: ', registration);
+        }).catch(registrationError => {
+            console.log('SW registration failed: ', registrationError);
+        });
+    });
+}
