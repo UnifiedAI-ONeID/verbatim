@@ -166,7 +166,7 @@ const Spinner: React.FC = () => (
 );
 
 const LoginModal = ({ onLoginSuccess }: LoginModalProps) => {
-    const googleClientId = process.env.GOOGLE_CLIENT_ID || null;
+    const [googleClientId] = useState(() => process.env.GOOGLE_CLIENT_ID || null);
 
     const handleLogin = useCallback(async (response: any) => {
         try {
@@ -185,22 +185,40 @@ const LoginModal = ({ onLoginSuccess }: LoginModalProps) => {
     }, [onLoginSuccess]);
 
     useEffect(() => {
-        if (googleClientId && window.google) {
-            try {
-                window.google.accounts.id.initialize({
-                    client_id: googleClientId,
-                    callback: handleLogin,
-                });
-                const signInButton = document.getElementById('google-signin-button');
-                if (signInButton) {
-                    window.google.accounts.id.renderButton(
-                        signInButton,
-                        { theme: 'outline', size: 'large', type: 'standard', text: 'signin_with' }
-                    );
+        if (!googleClientId) {
+            return;
+        }
+
+        const initializeGsi = () => {
+            if (window.google?.accounts?.id) {
+                try {
+                    window.google.accounts.id.initialize({
+                        client_id: googleClientId,
+                        callback: handleLogin,
+                    });
+                    const signInButton = document.getElementById('google-signin-button');
+                    if (signInButton) {
+                        signInButton.innerHTML = '';
+                        window.google.accounts.id.renderButton(
+                            signInButton,
+                            { theme: 'outline', size: 'large', type: 'standard', text: 'signin_with' }
+                        );
+                    }
+                } catch (error) {
+                    console.error("Google Sign-In initialization failed:", error);
                 }
-            } catch (error) {
-                console.error("Google Sign-In initialization failed:", error);
             }
+        };
+
+        if (window.google?.accounts?.id) {
+            initializeGsi();
+        } else {
+            const script = document.querySelector('script[src="https://accounts.google.com/gsi/client"]');
+            script?.addEventListener('load', initializeGsi);
+            
+            return () => {
+                script?.removeEventListener('load', initializeGsi);
+            };
         }
     }, [googleClientId, handleLogin]);
 
