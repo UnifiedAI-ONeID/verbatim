@@ -1394,7 +1394,7 @@ const LoginModal: React.FC<{ onLogin: (user: User) => void; onClose: () => void;
         }
 
         const initializeGSI = () => {
-             if (window.google && googleButtonRef.current) {
+             if (googleButtonRef.current && window.google) {
                 googleButtonRef.current.innerHTML = '';
                 try {
                     window.google.accounts.id.initialize({
@@ -1410,19 +1410,32 @@ const LoginModal: React.FC<{ onLogin: (user: User) => void; onClose: () => void;
                     console.error("Error initializing Google Sign-In:", e);
                     setError("Failed to initialize Google Sign-In. The Client ID might be invalid.");
                 }
-            } else {
-                 console.error("Google Identity Services script not loaded or button ref not ready.");
-                 setError("Could not connect to Google Sign-In service. Please check your internet connection and refresh the page.");
             }
         };
 
-        if (!window.google) {
-            const timeout = setTimeout(initializeGSI, 500);
-            return () => clearTimeout(timeout);
-        } else {
+        if (window.google) {
             initializeGSI();
+            return;
         }
 
+        const intervalId = setInterval(() => {
+            if (window.google) {
+                clearInterval(intervalId);
+                initializeGSI();
+            }
+        }, 100);
+
+        const timeoutId = setTimeout(() => {
+            clearInterval(intervalId);
+            if (!window.google) {
+                 setError("Could not connect to Google Sign-In service. Please check your internet connection and refresh the page.");
+            }
+        }, 5000);
+
+        return () => {
+            clearInterval(intervalId);
+            clearTimeout(timeoutId);
+        };
     }, [GOOGLE_CLIENT_ID, handleCredentialResponse]);
 
     return (
