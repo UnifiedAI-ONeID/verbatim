@@ -1,4 +1,5 @@
-import React, { useState, useEffect, createContext, useContext } from 'react';
+
+import React, { useState, useEffect, createContext, useContext, PropsWithChildren } from 'react';
 import { translations } from './config.ts';
 import { Language, Theme } from './types.ts';
 
@@ -6,8 +7,7 @@ import { Language, Theme } from './types.ts';
 export const ThemeContext = createContext<{ theme: Theme; setTheme: (theme: Theme) => void; toggleTheme: () => void }>({ theme: 'dark', setTheme: () => {}, toggleTheme: () => {} });
 export const LanguageContext = createContext<{ lang: Language; setLang: (lang: Language) => void; t: typeof translations.en }>({ lang: 'en', setLang: () => {}, t: translations.en });
 
-// FIX: Made children prop optional to resolve "Property 'children' is missing" error.
-export const ThemeProvider = ({ children }: { children?: React.ReactNode }) => {
+export const ThemeProvider = ({ children }: PropsWithChildren) => {
     const [theme, setTheme] = useState<Theme>(() => {
         const storedTheme = localStorage.getItem('verbatim_theme');
         return (storedTheme === 'light' || storedTheme === 'dark') ? storedTheme : 'dark';
@@ -22,8 +22,7 @@ export const ThemeProvider = ({ children }: { children?: React.ReactNode }) => {
     return <ThemeContext.Provider value={{ theme, setTheme, toggleTheme }}>{children}</ThemeContext.Provider>;
 };
 
-// FIX: Made children prop optional to resolve "Property 'children' is missing" error.
-export const LanguageProvider = ({ children }: { children?: React.ReactNode }) => {
+export const LanguageProvider = ({ children }: PropsWithChildren) => {
     const [lang, setLang] = useState<Language>(() => {
         const storedLang = localStorage.getItem('verbatim_language') as Language;
         if (storedLang && translations[storedLang]) return storedLang;

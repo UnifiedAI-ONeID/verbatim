@@ -373,14 +373,17 @@ export const translations = {
 };
 
 // --- Firebase Initialization ---
+// SECURE CONFIGURATION: Replace these placeholder values with your own
+// Firebase project's configuration. The app includes a warning overlay
+// to guide you if these are not set correctly.
 export const firebaseConfig = {
-  apiKey: "AIzaSyBjEvuItFoeMQRo3K9poC179RayWSNGRsw",
-  authDomain: "gen-lang-client-0046527508.firebaseapp.com",
-  projectId: "gen-lang-client-0046527508",
-  storageBucket: "gen-lang-client-0046527508.appspot.com",
-  messagingSenderId: "842883143615",
-  appId: "1:842883143615:web:21a6e14ca11e78df87730a",
-  measurementId: "G-WR0SBSETLH"
+  apiKey: "AIzaSy_YOUR_API_KEY", // Placeholder - DO NOT COMMIT REAL KEYS
+  authDomain: "YOUR_AUTH_DOMAIN",
+  projectId: "YOUR_PROJECT_ID",
+  storageBucket: "YOUR_STORAGE_BUCKET",
+  messagingSenderId: "YOUR_SENDER_ID",
+  appId: "YOUR_APP_ID",
+  measurementId: "YOUR_MEASUREMENT_ID"
 };
 
 

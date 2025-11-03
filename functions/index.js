@@ -7,7 +7,7 @@ const { GoogleGenAI } = require("@google/genai");
 
 initializeApp();
 
-// Set GEMINI_API_KEY in your Cloud Functions environment
+// Set GEMINI_API_KEY in your Cloud Functions environment using Firebase's secret management.
 // Run: firebase functions:config:set gemini.key="YOUR_API_KEY"
 const geminiApiKey = functions.config().gemini.key;
 const ai = new GoogleGenAI({apiKey: geminiApiKey});

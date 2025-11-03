@@ -1,18 +1,26 @@
-import { initializeApp } from "firebase/app";
-import { getAuth } from "firebase/auth";
+
+
+import firebase from 'firebase/compat/app';
+import 'firebase/compat/auth';
+import 'firebase/compat/firestore';
+import 'firebase/compat/storage';
+import 'firebase/compat/functions';
+import 'firebase/compat/analytics';
 import { getFirestore, enableIndexedDbPersistence } from "firebase/firestore";
-import { getStorage } from "firebase/storage";
-import { getFunctions } from "firebase/functions";
-import { getAnalytics } from "firebase/analytics";
 import { GoogleGenAI } from "@google/genai";
 import { firebaseConfig } from "./config.ts";
 
-// Initialize Firebase
-const firebaseApp = initializeApp(firebaseConfig);
-export const analytics = getAnalytics(firebaseApp);
-export const auth = getAuth(firebaseApp);
-export const db = getFirestore(firebaseApp);
-enableIndexedDbPersistence(db)
+// Fix: Initialize Firebase with the v8 compat SDK to resolve module errors.
+const app = firebase.initializeApp(firebaseConfig);
+
+export const analytics = firebase.analytics();
+export const auth = firebase.auth();
+export const db = firebase.firestore();
+export const storage = firebase.storage();
+export const functions = firebase.functions();
+
+// Fix: Use the v8 compat version of enablePersistence.
+db.enablePersistence()
   .catch((err) => {
     if (err.code == 'failed-precondition') {
       console.warn("Firestore persistence failed: multiple tabs open.");
@@ -20,10 +28,6 @@ enableIndexedDbPersistence(db)
       console.warn("Firestore persistence not supported in this browser.");
     }
   });
-export const storage = getStorage(firebaseApp);
-export const functions = getFunctions(firebaseApp);
 
-// Initialize Gemini
+// Initialize Gemini. The API key is securely provided by the hosting environment.
 export const ai = new GoogleGenAI({ apiKey: process.env.API_KEY as string });
-
-console.log("Firebase and Gemini services initialized.");
