@@ -1,26 +1,21 @@
+
+
 import React, { useState, useCallback, useEffect, useRef, useMemo } from 'react';
 import { marked } from 'marked';
-// Fix: Use Firebase v8 compat imports to resolve module errors.
+// @google/genai Coding Guidelines: Fix 'User' type not found error by using firebase.User from the compat library.
 import firebase from 'firebase/compat/app';
-import 'firebase/compat/auth';
-import { collection, query, orderBy, onSnapshot, doc, setDoc, deleteDoc, updateDoc } from 'firebase/firestore';
-import { ref, uploadBytes, deleteObject } from 'firebase/storage';
-import { httpsCallable } from 'firebase/functions';
 
 import { Session, ActionModalData, ModalProps, AccordionProps, EditingSpeaker, ActiveTab } from './types.ts';
 import { useLocalization, useTheme } from './contexts.tsx';
 import { styles } from './styles.ts';
-import { auth, db, storage, functions, ai } from './services.ts';
+import { ai } from './services.ts';
 import { firebaseConfig, tools } from './config.ts';
-import { useKeepAwake } from './hooks.ts';
+import { useKeepAwake, useAuth, usePictureInPicture, useRecorder, useSessions } from './hooks.ts';
 
 // --- Error Boundary ---
+// @google/genai Coding Guidelines: Fix state and props errors by refactoring to use a class property for state initialization.
 export class ErrorBoundary extends React.Component<React.PropsWithChildren<{}>, { hasError: boolean }> {
-  // Fix: Add constructor to properly initialize props and state for class component.
-  constructor(props: React.PropsWithChildren<{}>) {
-    super(props);
-    this.state = { hasError: false };
-  }
+  state = { hasError: false };
 
   static getDerivedStateFromError(error: Error) {
     console.error("ErrorBoundary caught an error:", error);
@@ -65,7 +60,7 @@ const SessionItemSkeleton = () => (
 const Header = ({ onLogoClick }: { onLogoClick: () => void }) => {
     const { t, lang, setLang } = useLocalization();
     const { theme, toggleTheme } = useTheme();
-    const { user, signIn, signOut: signOutUser } = useAuth();
+    const { user, signIn, signOut } = useAuth();
 
     return (
         <header style={styles.header}>
@@ -76,7 +71,7 @@ const Header = ({ onLogoClick }: { onLogoClick: () => void }) => {
             <div style={styles.headerControls}>
                  <select value={lang} onChange={e => setLang(e.target.value as any)} style={styles.headerSelect} aria-label={t.language}><option value="en">EN</option><option value="es">ES</option><option value="zh-CN">简体</option><option value="zh-TW">繁體</option></select>
                 <button onClick={toggleTheme} style={styles.themeToggleButton} aria-label={`${t.theme}: ${theme}`}>{theme === 'light' ? '🌙' : '☀️'}</button>
-                {user ? <button onClick={signOutUser} style={styles.secondaryButton}>{t.signOut}</button> : <button onClick={signIn} style={styles.primaryButton}>{t.signIn}</button>}
+                {user ? <button onClick={signOut} style={styles.secondaryButton}>{t.signOut}</button> : <button onClick={signIn} style={styles.primaryButton}>{t.signIn}</button>}
             </div>
         </header>
     );
@@ -89,22 +84,19 @@ const MicrophoneIcon = () => (
 );
 const StopIcon = () => <svg width="40%" height="40%" viewBox="0 0 24 24" fill="currentColor" xmlns="http://www.w3.org/2000/svg"><rect width="14" height="14" x="5" y="5" rx="2" /></svg>;
 
-interface RecordViewProps {
-    isRecording: boolean;
-    startRecording: () => void;
-    stopRecording: () => void;
-    recordingTime: number;
-    status: string;
-    isMicReady: boolean;
-}
-
-const RecordView = ({ isRecording, startRecording, stopRecording, recordingTime, status, isMicReady }: RecordViewProps) => {
+// @google/genai Coding Guidelines: Fix 'User' type not found error by using firebase.User from the compat library.
+const RecordView = ({ user }: { user: firebase.User | null }) => {
     const { t } = useLocalization();
-    const { user } = useAuth();
+    const { isRecording, recordingTime, status, isMicReady, startRecording, stopRecording } = useRecorder(user);
+    const { updatePip } = usePictureInPicture();
     const canvasRef = useRef<HTMLCanvasElement>(null);
     const audioContextRef = useRef<AudioContext | null>(null);
     const analyserRef = useRef<AnalyserNode | null>(null);
     const sourceRef = useRef<MediaStreamAudioSourceNode | null>(null);
+    
+     useEffect(() => {
+        updatePip(isRecording, recordingTime);
+    }, [isRecording, recordingTime, updatePip]);
     
     useEffect(() => {
         if (isRecording && isMicReady && canvasRef.current) {
@@ -268,15 +260,9 @@ const ToggleSwitch = ({ id, label, title, isPipSupported }: { id: string, label:
     );
 };
 
-interface SessionsViewProps {
-    sessions: Session[];
-    onSelectSession: (session: Session) => void;
-    isLoading: boolean;
-}
-
-const SessionsView = ({ sessions, onSelectSession, isLoading }: SessionsViewProps) => {
+// @google/genai Coding Guidelines: Fix 'User' type not found error by using firebase.User from the compat library.
+const SessionsView = ({ sessions, onSelectSession, isLoading, user }: { sessions: Session[]; onSelectSession: (session: Session) => void; isLoading: boolean; user: firebase.User | null; }) => {
     const { t } = useLocalization();
-    const { user } = useAuth();
     const [searchTerm, setSearchTerm] = useState('');
 
     const filteredSessions = useMemo(() =>
@@ -673,224 +659,24 @@ const FirebaseConfigWarning = () => (
 );
 
 
-// --- Main App Logic & Hooks ---
-const useAuth = () => {
-    const { t } = useLocalization();
-    // Fix: Use firebase.User type from compat library.
-    const [user, setUser] = useState<firebase.User | null>(null);
-    const [loading, setLoading] = useState(true);
-
-    useEffect(() => {
-        // Fix: Use auth.onAuthStateChanged method from compat library.
-        const unsubscribe = auth.onAuthStateChanged((currentUser) => {
-            setUser(currentUser);
-            setLoading(false);
-        });
-        return () => unsubscribe();
-    }, []);
-
-    const signIn = async () => {
-        // Fix: Use firebase.auth.GoogleAuthProvider from compat library.
-        const provider = new firebase.auth.GoogleAuthProvider();
-        try {
-            // Fix: Use auth.signInWithPopup method from compat library.
-            await auth.signInWithPopup(provider);
-        } catch (error: any) {
-            if (error.code === 'auth/popup-blocked') {
-                alert(t.signInPopupBlockedError);
-            } else {
-                console.error("Sign in error:", error);
-                alert(t.signInError);
-            }
-        }
-    };
-    
-    // Fix: Use auth.signOut method from compat library.
-    return { user, loading, signIn, signOut: () => auth.signOut() };
-};
-
-const usePictureInPicture = () => {
-    const pipWindow = useRef<Window | null>(null);
-    const [isPipOpen, setIsPipOpen] = useState(false);
-    const channel = useMemo(() => new BroadcastChannel('verbatim_pip_channel'), []);
-
-    const requestPip = useCallback(async () => {
-        if ((document as any).pictureInPictureEnabled && !pipWindow.current) {
-            try {
-                pipWindow.current = await (window as any).open('/pip.html', 'VerbatimPIP', 'width=400,height=80,popup');
-                setIsPipOpen(true);
-                 if (pipWindow.current) {
-                    pipWindow.current.addEventListener('beforeunload', () => {
-                        setIsPipOpen(false);
-                        pipWindow.current = null;
-                    });
-                }
-            } catch (error) {
-                console.error('Error opening PiP window:', error);
-            }
-        }
-    }, []);
-    
-    const closePip = useCallback(() => {
-        if (pipWindow.current) {
-            pipWindow.current.close();
-            pipWindow.current = null;
-            setIsPipOpen(false);
-        }
-    }, []);
-    
-     useEffect(() => {
-        const handler = (event: MessageEvent) => {
-            if (event.data.type === 'pip_ready' && isPipOpen) {
-                // The main app can send its current state to the new PiP window
-            }
-        };
-        channel.addEventListener('message', handler);
-        return () => channel.removeEventListener('message', handler);
-    }, [channel, isPipOpen]);
-
-    const updatePip = useCallback((isRecording: boolean, recordingTime: number) => {
-        if (isPipOpen) {
-            channel.postMessage({ type: 'state_update', isRecording, recordingTime });
-        }
-    }, [isPipOpen, channel]);
-
-    return { requestPip, closePip, updatePip, isPipOpen };
-};
-
 export const App = () => {
     const { user, loading: authLoading } = useAuth();
     const { t } = useLocalization();
-    const [sessions, setSessions] = useState<Session[]>([]);
+    const { sessions, sessionsLoading, deleteSession, updateSpeakerName } = useSessions(user);
     const [activeTab, setActiveTab] = useState<ActiveTab>('record');
     const [selectedSession, setSelectedSession] = useState<Session | null>(null);
-    const [isRecording, setIsRecording] = useState(false);
-    const [recordingTime, setRecordingTime] = useState(0);
-    const [status, setStatus] = useState('');
-    const [isMicReady, setIsMicReady] = useState(false);
-    const [sessionsLoading, setSessionsLoading] = useState(true);
     const [showDedication, setShowDedication] = useState(true);
 
-    const mediaRecorderRef = useRef<MediaRecorder | null>(null);
-    const audioChunksRef = useRef<Blob[]>([]);
-    const timerRef = useRef<number | null>(null);
-    const { updatePip } = usePictureInPicture();
-    
     useEffect(() => {
         const timer = setTimeout(() => setShowDedication(false), 5000);
         return () => clearTimeout(timer);
     }, []);
 
-    useEffect(() => {
-        if (!user) {
-            setSessions([]);
-            setSessionsLoading(false);
-            return;
+    const handleDelete = async (sessionId: string) => {
+        const success = await deleteSession(sessionId);
+        if (success) {
+            setSelectedSession(null); // Go back to the list view on successful deletion
         }
-        setSessionsLoading(true);
-        const q = query(collection(db, `users/${user.uid}/sessions`), orderBy('metadata.date', 'desc'));
-        const unsubscribe = onSnapshot(q, (snapshot) => {
-            const userSessions = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Session));
-            setSessions(userSessions);
-            setSessionsLoading(false);
-        }, (error) => {
-            console.error("Error fetching sessions:", error);
-            setSessionsLoading(false);
-        });
-
-        return () => unsubscribe();
-    }, [user]);
-
-    useEffect(() => {
-        updatePip(isRecording, recordingTime);
-    }, [isRecording, recordingTime, updatePip]);
-
-    const handleNewSession = async () => {
-        if (!user) return;
-        setStatus(t.preparing);
-
-        try {
-            const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-            setIsMicReady(true);
-            const mediaRecorder = new MediaRecorder(stream, { mimeType: 'audio/webm' });
-            mediaRecorderRef.current = mediaRecorder;
-
-            mediaRecorder.ondataavailable = event => audioChunksRef.current.push(event.data);
-            mediaRecorder.onstop = async () => {
-                stream.getTracks().forEach(track => track.stop());
-                setIsRecording(false);
-                clearInterval(timerRef.current!);
-                
-                if (audioChunksRef.current.length === 0 || recordingTime < 2) {
-                    setStatus(t.recordingTooShortError);
-                    setTimeout(() => setStatus(''), 3000);
-                    return;
-                }
-                
-                setStatus(t.analyzing);
-                
-                const audioBlob = new Blob(audioChunksRef.current, { type: 'audio/webm' });
-                audioChunksRef.current = [];
-                
-                const sessionId = doc(collection(db, 'users')).id;
-                const storageRef = ref(storage, `recordings/${user.uid}/${sessionId}.webm`);
-                
-                try {
-                    await uploadBytes(storageRef, audioBlob);
-                    
-                    const newSession: Omit<Session, 'id'> = {
-                        metadata: { title: `Session ${new Date().toLocaleString()}`, date: new Date().toISOString(), location: '', mapUrl: '' },
-                        results: { transcript: '', summary: '', actionItems: [] },
-                        speakers: {},
-                        status: 'processing'
-                    };
-                    await setDoc(doc(db, `users/${user.uid}/sessions/${sessionId}`), newSession);
-                    
-                    const analyzeAudio = httpsCallable(functions, 'analyzeAudio');
-                    await analyzeAudio({ sessionId, prompt: t.analysisPrompt });
-
-                } catch (error) {
-                    console.error("Error during upload/analysis:", error);
-                    setStatus(t.processingError);
-                    const sessionDocRef = doc(db, `users/${user.uid}/sessions/${sessionId}`);
-                    await updateDoc(sessionDocRef, { status: 'error', error: 'Upload or function call failed.' });
-                } finally {
-                    setStatus('');
-                }
-            };
-
-            mediaRecorder.start();
-            setIsRecording(true);
-            setStatus('');
-            setRecordingTime(0);
-            timerRef.current = window.setInterval(() => setRecordingTime(prev => prev + 1), 1000);
-            
-        } catch (err) {
-            console.error('Error starting recording:', err);
-            setStatus(t.micPermissionError);
-            setIsMicReady(false);
-        }
-    };
-    
-    const handleStopRecording = () => mediaRecorderRef.current?.stop();
-    const handleDeleteSession = async (sessionId: string) => {
-        if (!user) return;
-        if (window.confirm(t.deleteConfirmation)) {
-            try {
-                await deleteDoc(doc(db, `users/${user.uid}/sessions/${sessionId}`));
-                const storageRef = ref(storage, `recordings/${user.uid}/${sessionId}.webm`);
-                await deleteObject(storageRef);
-                setSelectedSession(null);
-            } catch (error) {
-                console.error("Error deleting session:", error);
-            }
-        }
-    };
-    
-    const handleSpeakerUpdate = async (sessionId: string, speakerId: string, newName: string) => {
-        if (!user) return;
-        const sessionDocRef = doc(db, `users/${user.uid}/sessions/${sessionId}`);
-        await updateDoc(sessionDocRef, { [`speakers.${speakerId}`]: newName });
     };
 
     const handleViewChange = (view: ActiveTab) => {
@@ -909,11 +695,11 @@ export const App = () => {
             <Header onLogoClick={() => handleViewChange('record')} />
             <main style={styles.mainContent}>
                 {selectedSession ? (
-                    <DetailView session={selectedSession} onBack={() => setSelectedSession(null)} onDelete={handleDeleteSession} onSpeakerUpdate={handleSpeakerUpdate} />
+                    <DetailView session={selectedSession} onBack={() => setSelectedSession(null)} onDelete={handleDelete} onSpeakerUpdate={updateSpeakerName} />
                 ) : (
                     <>
-                        {activeTab === 'record' && <RecordView isRecording={isRecording} startRecording={handleNewSession} stopRecording={handleStopRecording} recordingTime={recordingTime} status={status} isMicReady={isMicReady} />}
-                        {activeTab === 'sessions' && <SessionsView sessions={sessions} onSelectSession={setSelectedSession} isLoading={sessionsLoading} />}
+                        {activeTab === 'record' && <RecordView user={user} />}
+                        {activeTab === 'sessions' && <SessionsView sessions={sessions} onSelectSession={setSelectedSession} isLoading={sessionsLoading} user={user} />}
                     </>
                 )}
             </main>

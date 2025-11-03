@@ -1,6 +1,6 @@
 
 
-const CACHE_NAME = 'verbatim-v28'; // Incremented version to force SW update and clear old cache
+const CACHE_NAME = 'verbatim-v30'; // Incremented version for the full rebuild
 const urlsToCache = [
   // App Shell
   '/',
@@ -8,6 +8,8 @@ const urlsToCache = [
   '/pip.html',
   '/manifest.json',
   '/icon.svg',
+  '/apple-touch-icon.png', // Added for iOS home screen
+  '/icon-512x512.png',     // Added for PWA splash screen & manifest
 
   // Local TS/TSX source files for offline functionality
   '/index.tsx',
@@ -106,7 +108,7 @@ self.addEventListener('fetch', event => {
   
   // Only log GET requests to keep the console cleaner
   if (request.method === 'GET') {
-    console.log(`[SW] Intercepting fetch for: ${requestUrl.pathname}`);
+    // console.log(`[SW] Intercepting fetch for: ${requestUrl.pathname}`);
   }
 
   if (request.method !== 'GET') {
