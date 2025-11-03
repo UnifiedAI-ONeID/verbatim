@@ -5,9 +5,15 @@ import { marked } from 'marked';
 import { jwtDecode } from 'jwt-decode';
 
 // --- Type Declarations ---
+// FIX: Define the AIStudio interface to resolve type conflicts with global declarations.
+interface AIStudio {
+  getSecret: (key: string) => Promise<string>;
+}
+
 declare global {
   interface Window {
     google?: any;
+    aistudio?: AIStudio;
   }
 }
 
@@ -224,8 +230,8 @@ const LoginModal = ({ googleClientId, onLoginSuccess }: LoginModalProps) => {
                 </p>
                 <div id="google-signin-button" style={styles.signInButtonContainer}></div>
                  { !googleClientId &&
-                    <p style={{color: '#ffc107', fontSize: '0.8rem', marginTop: '16px'}}>
-                        Google Client ID is not configured. Please contact the administrator.
+                    <p style={{color: '#ffc107', fontSize: '0.8rem', marginTop: '16px', lineHeight: 1.5, maxWidth: '300px', margin: '16px auto 0'}}>
+                        Google Client ID is not configured. Please ensure the <code>GOOGLE_CLIENT_ID</code> secret is set in your project settings.
                     </p>
                 }
             </div>
@@ -236,12 +242,27 @@ const LoginModal = ({ googleClientId, onLoginSuccess }: LoginModalProps) => {
 const App: React.FC = () => {
     const [user, setUser] = useState<User | null>(null);
     const [isLoading, setIsLoading] = useState(true);
-
-    // Use client ID from environment secrets
-    const googleClientId = process.env.GOOGLE_CLIENT_ID || null;
+    const [googleClientId, setGoogleClientId] = useState<string | null>(null);
 
     useEffect(() => {
-        const checkUser = async () => {
+        const initializeApp = async () => {
+            // First, try to get the client ID from the AI Studio environment
+            let clientId: string | null = null;
+            if (window.aistudio && typeof window.aistudio.getSecret === 'function') {
+                try {
+                    clientId = await window.aistudio.getSecret('GOOGLE_CLIENT_ID');
+                } catch (e) {
+                    console.error('Could not retrieve GOOGLE_CLIENT_ID from aistudio.getSecret:', e);
+                }
+            }
+            
+            // Fallback to process.env for local development or other environments
+            if (!clientId) {
+                clientId = process.env.GOOGLE_CLIENT_ID || null;
+            }
+            setGoogleClientId(clientId);
+
+            // Then, check for an existing user session
             try {
                 const existingUser = await dbService.getUser();
                 setUser(existingUser);
@@ -251,7 +272,7 @@ const App: React.FC = () => {
                 setIsLoading(false);
             }
         };
-        checkUser();
+        initializeApp();
     }, []);
 
     const handleLogout = async () => {
@@ -380,6 +401,12 @@ keyframesStyle.innerHTML = `
 }
 body {
     background-color: #121212;
+}
+code {
+    background-color: #333;
+    padding: 2px 6px;
+    border-radius: 4px;
+    font-family: monospace;
 }
 `;
 document.head.appendChild(keyframesStyle);
