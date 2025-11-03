@@ -1,3 +1,4 @@
+
 import React from 'react';
 
 // --- Type Definitions ---
@@ -10,5 +11,5 @@ export type Session = { id: string; metadata: MeetingMetadata; results: MeetingR
 export type ActionModalData = { type: string; args?: any; sourceItem?: string; };
 export type EditingSpeaker = { sessionId: string; speakerId: string };
 export type ActiveTab = 'record' | 'sessions';
-export type AccordionProps = { title: string; children?: React.ReactNode; defaultOpen?: boolean; };
-export type ModalProps = { children?: React.ReactNode; onClose: () => void; title: string; };
+export type AccordionProps = { title: string; children?: React.Node; defaultOpen?: boolean; };
+export type ModalProps = { children?: React.Node; onClose: () => void; title: string; };

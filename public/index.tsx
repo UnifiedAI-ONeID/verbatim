@@ -1,3 +1,4 @@
+
 import React from 'react';
 import { createRoot } from 'react-dom/client';
 import { App } from './components.tsx';
@@ -7,6 +8,7 @@ import { injectGlobalStyles } from './styles.ts';
 
 // --- Inject global styles and render the app ---
 try {
+    console.info('[App] Initializing application...');
     injectGlobalStyles();
     
     const rootElement = document.getElementById('root');
@@ -24,6 +26,7 @@ try {
                 </ErrorBoundary>
             </React.StrictMode>
         );
+        console.info('[App] Application rendered successfully.');
     } else {
         console.error('Fatal Error: #root element not found in DOM.');
         document.body.innerHTML = '<div style="color:red; text-align:center; padding: 20px;"><strong>Fatal Error:</strong> Application could not start because the root DOM element was not found.</div>';
@@ -37,9 +40,9 @@ try {
 if ('serviceWorker' in navigator) {
   window.addEventListener('load', () => {
     navigator.serviceWorker.register('/sw.js').then(registration => {
-      console.log('SW registered: ', registration);
+      console.info('[SW] Service Worker registered successfully with scope:', registration.scope);
     }).catch(registrationError => {
-      console.log('SW registration failed: ', registrationError);
+      console.error('[SW] Service Worker registration failed:', registrationError);
     });
   });
 }

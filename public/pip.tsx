@@ -51,7 +51,6 @@ const PipApp = () => {
             display: 'flex',
             alignItems: 'center',
             gap: '8px',
-            width: '12px',
         },
         recordingIndicator: {
             width: '12px',
@@ -59,12 +58,6 @@ const PipApp = () => {
             borderRadius: '50%',
             backgroundColor: '#dc3545',
             animation: 'pulse 2s infinite',
-        },
-        notRecordingIndicator: {
-            width: '12px',
-            height: '12px',
-            borderRadius: '50%',
-            backgroundColor: '#6c757d',
         },
         timer: {
             fontSize: '1.5rem',
@@ -84,23 +77,18 @@ const PipApp = () => {
             cursor: 'pointer',
             opacity: 1,
             transition: 'opacity 0.2s',
-        },
-        stopButtonDisabled: {
-            opacity: 0.5,
-            cursor: 'not-allowed',
         }
     };
 
     return (
         <div style={styles.container}>
             <div style={styles.statusContainer}>
-                {isRecording ? <div style={styles.recordingIndicator}></div> : <div style={styles.notRecordingIndicator}></div>}
+                <div style={styles.recordingIndicator}></div>
             </div>
             <div style={styles.timer}>{formatTime(time)}</div>
             <button 
-                style={{...styles.stopButton, ...(!isRecording ? styles.stopButtonDisabled : {})}} 
-                onClick={handleStop} 
-                disabled={!isRecording}
+                style={styles.stopButton} 
+                onClick={handleStop}
             >
                 Stop
             </button>
@@ -125,7 +113,6 @@ style.textContent = `
     }
 `;
 document.head.appendChild(style);
-
 
 const root = createRoot(document.getElementById('root') as HTMLElement);
 root.render(<PipApp />);

@@ -1,4 +1,30 @@
+
 import { Type, FunctionDeclaration } from "@google/genai";
+
+// --- Firebase Initialization ---
+// IMPORTANT: CONFIGURE YOUR FIREBASE PROJECT
+// To use this application, you must create your own Firebase project and
+// paste your project's configuration details here.
+//
+// How to get your Firebase config:
+// 1. Go to the Firebase Console (https://console.firebase.google.com/).
+// 2. Create a new project or select an existing one.
+// 3. In your project, go to Project Settings (click the gear icon).
+// 4. Under the "General" tab, scroll down to "Your apps".
+// 5. If you haven't already, add a Web App.
+// 6. Find your web app and click the "SDK setup and configuration" section.
+// 7. Copy the `firebaseConfig` object and paste it below.
+//
+// The app includes a warning overlay that will appear until this is configured correctly.
+export const firebaseConfig = {
+  apiKey: "",
+  authDomain: "",
+  projectId: "",
+  storageBucket: "",
+  messagingSenderId: "",
+  appId: "",
+  measurementId: ""
+};
 
 // --- i18n Translations ---
 export const translations = {
@@ -350,7 +376,7 @@ export const translations = {
         keepAwakeInfo: '在錄音期間防止螢幕關閉。',
         backToList: '返回會話列表',
         recordPhoneCallTitle: '正在錄製電話通話？',
-        recordPhoneCallInstruction: '為獲得最佳音質，請連接您的耳機。您也可以使用手機的揚聲器。點擊錄音按鈕開始。',
+        recordPhoneCallInstruction: '為獲得最佳音質，請連接您的耳機。您也可以使用手機的揚声器。點擊錄音按鈕開始。',
         selectAudioDeviceTitle: '選取音訊來源',
         selectAudioDeviceInstruction: '請選擇您要用於錄音的麥克風。',
         start: '開始',
@@ -371,21 +397,6 @@ export const translations = {
         signInPopupBlockedError: '登入彈出視窗被瀏覽器封鎖。請允許此網站的彈出視窗。',
     },
 };
-
-// --- Firebase Initialization ---
-// SECURE CONFIGURATION: Replace these placeholder values with your own
-// Firebase project's configuration. The app includes a warning overlay
-// to guide you if these are not set correctly.
-export const firebaseConfig = {
-  apiKey: "AIzaSy_YOUR_API_KEY", // Placeholder - DO NOT COMMIT REAL KEYS
-  authDomain: "YOUR_AUTH_DOMAIN",
-  projectId: "YOUR_PROJECT_ID",
-  storageBucket: "YOUR_STORAGE_BUCKET",
-  messagingSenderId: "YOUR_SENDER_ID",
-  appId: "YOUR_APP_ID",
-  measurementId: "YOUR_MEASUREMENT_ID"
-};
-
 
 // --- Gemini Function Calling Tool Definitions ---
 export const tools: FunctionDeclaration[] = [

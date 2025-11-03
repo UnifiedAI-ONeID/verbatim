@@ -5,18 +5,6 @@
   "description": "An AI-powered meeting assistant that records audio and uses Gemini to generate a full transcript with speaker labels, a key summary, and actionable next steps.",
   "icons": [
     {
-      "src": "/apple-touch-icon.png",
-      "sizes": "192x192",
-      "type": "image/png",
-      "purpose": "any"
-    },
-    {
-      "src": "/icon-512x512.png",
-      "sizes": "512x512",
-      "type": "image/png",
-      "purpose": "any"
-    },
-    {
       "src": "/icon.svg",
       "sizes": "any",
       "type": "image/svg+xml",
