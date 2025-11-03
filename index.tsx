@@ -1,5 +1,3 @@
-
-
 import React, { useState, useRef, CSSProperties, useEffect, useCallback } from 'react';
 import { createRoot } from 'react-dom/client';
 import { GoogleGenAI, Type, FunctionDeclaration } from "@google/genai";
@@ -26,6 +24,8 @@ type ActionModalData = { type: string; args?: any; sourceItem?: string; };
 type User = { id: string; name: string; email: string; picture?: string; };
 type EditingSpeaker = { sessionId: string; speakerId: string };
 type ActiveTab = 'record' | 'sessions';
+type PostLoginAction = 'record' | 'sessions';
+
 
 // --- Component Prop Types ---
 type AccordionProps = {
@@ -171,6 +171,7 @@ const translations = {
         ],
         loginTitle: 'Welcome to Verbatim',
         loginSubtitle: 'Sign in with Google to save and manage your sessions.',
+        signIn: 'Sign In',
         faqLink: 'FAQ',
         faqTitle: 'Frequently Asked Questions',
         logout: 'Logout',
@@ -185,7 +186,7 @@ const translations = {
             },
             {
                 q: 'How do I start a new recording?',
-                a: 'First, you\'ll need to sign in with your Google account. After signing in, navigate to the "Record" tab and tap the large microphone button. You\'ll then be prompted to select your preferred microphone. Once you click "Start," the recording will begin immediately.',
+                a: 'Tap the large microphone button on the "Record" tab. If it\'s your first time, you\'ll be prompted to sign in with Google. After signing in, choose your microphone and click "Start" to begin recording.',
             },
             {
                 q: 'Can Verbatim understand different languages in the same meeting?',
@@ -307,6 +308,7 @@ const translations = {
         ],
         loginTitle: 'Bienvenido a Verbatim',
         loginSubtitle: 'Inicia sesión con Google para guardar y gestionar tus sesiones.',
+        signIn: 'Iniciar Sesión',
         faqLink: 'Preguntas Frecuentes',
         faqTitle: 'Preguntas Frecuentes',
         logout: 'Cerrar Sesión',
@@ -321,7 +323,7 @@ const translations = {
             },
             {
                 q: '¿Cómo inicio una nueva grabación?',
-                a: 'Primero, necesitarás iniciar sesión con tu cuenta de Google. Después de iniciar sesión, ve a la pestaña "Grabar" y toca el botón grande del micrófono. Luego se te pedirá que selecciones tu micrófono preferido. Una vez que hagas clic en "Iniciar", la grabación comenzará de inmediato.',
+                a: 'Toca el botón grande del micrófono en la pestaña "Grabar". Si es tu primera vez, se te pedirá que inicies sesión con Google. Después de iniciar sesión, elige tu micrófono y haz clic en "Iniciar" para comenzar a grabar.',
             },
             {
                 q: '¿Puede Verbatim entender diferentes idiomas en la misma reunión?',
@@ -443,6 +445,7 @@ const translations = {
         ],
         loginTitle: '欢迎使用 Verbatim',
         loginSubtitle: '使用 Google 登录以保存和管理您的会话。',
+        signIn: '登录',
         faqLink: '常见问题',
         faqTitle: '常见问题解答',
         logout: '登出',
@@ -457,7 +460,7 @@ const translations = {
             },
             {
                 q: '我如何开始新的录音？',
-                a: '首先，您需要使用您的Google帐户登录。登录后，导航到“录制”选项卡并点击大的麦克风按钮。然后会提示您选择您喜欢的麦克风。一旦您点击“开始”，录音将立即开始。',
+                a: '在“录制”选项卡上点击大的麦克风按钮。如果是您第一次使用，系统会提示您使用Google登录。登录后，选择您的麦克风并点击“开始”即可开始录音。',
             },
             {
                 q: 'Verbatim 能在同一次会议中理解不同的语言吗？',
@@ -579,6 +582,7 @@ const translations = {
         ],
         loginTitle: '歡迎使用 Verbatim',
         loginSubtitle: '使用 Google 登入以儲存和管理您的會話。',
+        signIn: '登入',
         faqLink: '常見問題',
         faqTitle: '常見問題解答',
         logout: '登出',
@@ -593,7 +597,7 @@ const translations = {
             },
             {
                 q: '我如何開始新的錄音？',
-                a: '首先，您需要使用您的Google帳戶登入。登入後，導覽至“錄製”選項卡並點擊大的麥克風按鈕。然後會提示您選擇您喜歡的麥克風。一旦您點擊“開始”，錄音將立即開始。',
+                a: '在“錄製”選項卡上點擊大的麥克風按鈕。如果是您第一次使用，系統會提示您使用Google登入。登入後，選擇您的麥克風並點擊“開始”即可開始錄音。',
             },
             {
                 q: 'Verbatim 能在同一次會議中理解不同的語言嗎？',
@@ -689,6 +693,7 @@ const styles: { [key: string]: CSSProperties } = {
         gap: '12px',
         textDecoration: 'none',
         color: 'white',
+        transition: 'transform 0.2s ease-in-out',
     },
     logoImage: {
         height: '40px',
@@ -723,6 +728,7 @@ const styles: { [key: string]: CSSProperties } = {
         padding: '24px',
         display: 'flex',
         flexDirection: 'column',
+        overflow: 'hidden', // Contain swipeable view
     },
     footer: {
         backgroundColor: '#1A1A1A',
@@ -749,152 +755,29 @@ const styles: { [key: string]: CSSProperties } = {
     // ... more styles
 };
 
+// --- Logo Component ---
+const Logo = ({ style }: { style?: CSSProperties }) => (
+    <svg viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg" style={style}>
+        <defs>
+            <linearGradient id="v_grad" x1="0.5" y1="0" x2="0.5" y2="1">
+                <stop stopColor="#00D9C8"/>
+                <stop offset="1" stopColor="#00A99D"/>
+            </linearGradient>
+        </defs>
+        <path d="M54 32C54 44.1503 44.1503 54 32 54C19.8497 54 10 44.1503 10 32C10 19.8497 19.8497 10 32 10C38.3995 10 44.2255 12.6106 48.4853 16.8704" stroke="url(#v_grad)" strokeWidth="8" strokeLinecap="round"/>
+        <path d="M22 32L32 42L52 22" stroke="white" strokeWidth="8" strokeLinecap="round" strokeLinejoin="round"/>
+    </svg>
+);
+
+
 // --- Main Application ---
 const App = () => {
     const [user, setUser] = useState<User | null>(null);
     const [isLoading, setIsLoading] = useState(true);
+    const [isLoginModalOpen, setIsLoginModalOpen] = useState(false);
+    const [postLoginAction, setPostLoginAction] = useState<PostLoginAction | null>(null);
 
-    useEffect(() => {
-        const checkUser = async () => {
-            const existingUser = await dbService.getUser();
-            setUser(existingUser);
-            setIsLoading(false);
-        };
-        checkUser();
-    }, []);
-
-    const handleLoginSuccess = async (loggedInUser: User) => {
-        await dbService.saveUser(loggedInUser);
-        setUser(loggedInUser);
-    };
-
-    const handleLogout = async () => {
-        await dbService.logout();
-        setUser(null);
-        if (window.google) {
-            window.google.accounts.id.disableAutoSelect();
-        }
-    };
-
-    if (isLoading) {
-        return <div style={styles.app}><div style={{ margin: 'auto', color: '#888' }}>Loading...</div></div>;
-    }
-
-    if (!user) {
-        return <LoginScreen onLogin={handleLoginSuccess} />;
-    }
-
-    return <MainApp user={user} onLogout={handleLogout} />;
-};
-
-
-const LoginScreen: React.FC<{ onLogin: (user: User) => void }> = ({ onLogin }) => {
-    const t = getTranslator(language);
-    const googleButtonRef = useRef<HTMLDivElement>(null);
-    const [error, setError] = useState<string | null>(null);
-
-    const handleCredentialResponse = useCallback(async (response: any) => {
-        try {
-            const decoded: { sub: string, name: string, email: string, picture: string } = jwtDecode(response.credential);
-            const user: User = {
-                id: decoded.sub,
-                name: decoded.name,
-                email: decoded.email,
-                picture: decoded.picture,
-            };
-            onLogin(user);
-        } catch (error) {
-            console.error("Error decoding credential response:", error);
-            setError("Failed to process login. Please try again.");
-        }
-    }, [onLogin]);
-
-
-    useEffect(() => {
-        const FALLBACK_CLIENT_ID = "450870631577-ecddfl5qeb8rq3bdjhbjnlmckb4tksb6.apps.googleusercontent.com";
-        const clientId = process.env.GOOGLE_CLIENT_ID;
-        let effectiveClientId = clientId;
-
-        if (!clientId) {
-            console.warn(
-                "❗ Google Sign-In is using a fallback Client ID. For production, please set the 'GOOGLE_CLIENT_ID' secret in your project."
-            );
-            effectiveClientId = FALLBACK_CLIENT_ID;
-        }
-
-        if (window.google && googleButtonRef.current) {
-            try {
-                window.google.accounts.id.initialize({
-                    client_id: effectiveClientId,
-                    callback: handleCredentialResponse,
-                });
-                window.google.accounts.id.renderButton(
-                    googleButtonRef.current,
-                    { theme: 'outline', size: 'large', text: 'continue_with', width: '300' }
-                );
-            } catch (e) {
-                console.error("Error initializing Google Sign-In:", e);
-                setError("Failed to initialize Google Sign-In. Please check the console for details.");
-            }
-        } else {
-             // Retry if google object is not yet available
-            const timeout = setTimeout(() => {
-                if(window.google && googleButtonRef.current) {
-                    try {
-                        window.google.accounts.id.initialize({
-                            client_id: effectiveClientId,
-                            callback: handleCredentialResponse,
-                        });
-                        window.google.accounts.id.renderButton(
-                            googleButtonRef.current,
-                            { theme: 'outline', size: 'large', text: 'continue_with', width: '300' }
-                        );
-                    } catch (e) {
-                        console.error("Error initializing Google Sign-In (retry):", e);
-                        setError("Failed to initialize Google Sign-In. Please check the console for details.");
-                    }
-                } else {
-                     console.error("Google Identity Services script not loaded.");
-                     setError("Could not connect to Google Sign-In service. Please check your internet connection and refresh the page.");
-                }
-            }, 1000);
-            return () => clearTimeout(timeout);
-        }
-    }, [handleCredentialResponse]);
-
-    const loginStyles: { [key: string]: CSSProperties } = {
-        container: {
-            display: 'flex',
-            flexDirection: 'column',
-            alignItems: 'center',
-            justifyContent: 'center',
-            minHeight: '100vh',
-            backgroundColor: '#0D0D0D',
-            color: '#FFFFFF',
-            fontFamily: "'Poppins', sans-serif",
-            textAlign: 'center',
-            padding: '24px',
-        },
-        logoImage: { height: '80px', width: '80px', marginBottom: '16px' },
-        title: { fontSize: '2.5rem', fontWeight: 700, margin: '0 0 8px 0' },
-        subtitle: { fontSize: '1.1rem', color: '#AAA', margin: '0 0 32px 0' },
-        error: { color: '#ff4d4d', margin: '16px 0', maxWidth: '300px' },
-    };
-
-    return (
-        <div style={loginStyles.container}>
-            <img src="https://assets-global.website-files.com/6526ada137350b5030229339/6526b15a4606549340b6167c_II-logo-white-cropped.png" alt="Verbatim Logo" style={loginStyles.logoImage} />
-            <h1 style={loginStyles.title}>{t('loginTitle')}</h1>
-            <p style={loginStyles.subtitle}>{t('loginSubtitle')}</p>
-            <div ref={googleButtonRef}></div>
-            {error && <p style={loginStyles.error}>{error}</p>}
-        </div>
-    );
-};
-
-
-const MainApp: React.FC<{ user: User, onLogout: () => void }> = ({ user, onLogout }) => {
-    // ... All the original state and logic from the App component goes here ...
+    // States from former MainApp
     const [isRecording, setIsRecording] = useState(false);
     const [isAnalyzing, setIsAnalyzing] = useState(false);
     const [sessions, setSessions] = useState<Session[]>([]);
@@ -910,6 +793,11 @@ const MainApp: React.FC<{ user: User, onLogout: () => void }> = ({ user, onLogou
     const [audioDeviceModalOpen, setAudioDeviceModalOpen] = useState(false);
     const [audioDevices, setAudioDevices] = useState<MediaDeviceInfo[]>([]);
     const [selectedDeviceId, setSelectedDeviceId] = useState<string>('default');
+    const [isLogoHovered, setIsLogoHovered] = useState(false);
+
+    // Swipe navigation state
+    const [touchStartX, setTouchStartX] = useState<number | null>(null);
+    const [touchMoveX, setTouchMoveX] = useState<number | null>(null);
 
     const mediaRecorderRef = useRef<MediaRecorder | null>(null);
     const audioChunksRef = useRef<Blob[]>([]);
@@ -919,12 +807,94 @@ const MainApp: React.FC<{ user: User, onLogout: () => void }> = ({ user, onLogou
     const wakeLockRef = useRef<any>(null);
     const channel = useRef(new BroadcastChannel('verbatim_pip_channel')).current;
 
-
-    // ... All original useEffects and helper functions from App component ...
     useEffect(() => {
-        dbService.getSessions(user.id).then(setSessions);
-    }, [user.id]);
+        const checkUser = async () => {
+            const existingUser = await dbService.getUser();
+            setUser(existingUser);
+            setIsLoading(false);
+        };
+        checkUser();
+    }, []);
 
+    useEffect(() => {
+        if (user) {
+            dbService.getSessions(user.id).then(setSessions);
+        } else {
+            setSessions([]);
+        }
+    }, [user]);
+
+    const handleLoginSuccess = async (loggedInUser: User) => {
+        await dbService.saveUser(loggedInUser);
+        setUser(loggedInUser);
+        setIsLoginModalOpen(false);
+
+        if (postLoginAction === 'record') {
+            openAudioDeviceModal();
+        } else if (postLoginAction === 'sessions') {
+            setActiveTab('sessions');
+        }
+        setPostLoginAction(null);
+    };
+
+    const handleLogout = async () => {
+        await dbService.logout();
+        setUser(null);
+        setActiveSession(null);
+        setActiveTab('record');
+        if (window.google) {
+            window.google.accounts.id.disableAutoSelect();
+        }
+    };
+    
+    const handleStartRecordingRequest = () => {
+        if (user) {
+            openAudioDeviceModal();
+        } else {
+            setPostLoginAction('record');
+            setIsLoginModalOpen(true);
+        }
+    };
+    
+    const handleTabClick = (tab: ActiveTab) => {
+        if (tab === 'sessions' && !user) {
+            setPostLoginAction('sessions');
+            setIsLoginModalOpen(true);
+        } else {
+            setActiveTab(tab);
+        }
+    };
+
+    // Swipe navigation handlers
+    const handleTouchStart = (e: React.TouchEvent) => {
+        if (e.touches.length === 1) {
+            setTouchStartX(e.touches[0].clientX);
+            setTouchMoveX(null);
+        }
+    };
+
+    const handleTouchMove = (e: React.TouchEvent) => {
+        if (touchStartX !== null && e.touches.length === 1) {
+            setTouchMoveX(e.touches[0].clientX);
+        }
+    };
+
+    const handleTouchEnd = () => {
+        if (touchStartX && touchMoveX) {
+            const deltaX = touchMoveX - touchStartX;
+            const swipeThreshold = 50;
+
+            if (deltaX < -swipeThreshold && activeTab === 'record') {
+                handleTabClick('sessions');
+            } else if (deltaX > swipeThreshold && activeTab === 'sessions') {
+                handleTabClick('record');
+            }
+        }
+        setTouchStartX(null);
+        setTouchMoveX(null);
+    };
+
+    // All other functions from MainApp are moved here
     useEffect(() => {
         const handlePipMessage = (event: MessageEvent) => {
             if (event.data.type === 'stop_recording') {
@@ -982,7 +952,6 @@ const MainApp: React.FC<{ user: User, onLogout: () => void }> = ({ user, onLogou
 
     const openAudioDeviceModal = async () => {
         try {
-            // Request permissions first
             await navigator.mediaDevices.getUserMedia({ audio: true });
             const devices = await navigator.mediaDevices.enumerateDevices();
             setAudioDevices(devices.filter(d => d.kind === 'audioinput'));
@@ -992,7 +961,6 @@ const MainApp: React.FC<{ user: User, onLogout: () => void }> = ({ user, onLogou
             setErrorMessage(t('micPermissionError'));
         }
     };
-
 
     const startRecording = async () => {
         setErrorMessage('');
@@ -1008,7 +976,7 @@ const MainApp: React.FC<{ user: User, onLogout: () => void }> = ({ user, onLogou
             setIsRecording(true);
             setAudioDeviceModalOpen(false);
             if (keepScreenAwake && !wakeLockRef.current) {
-                toggleKeepAwake(); // Re-engage wake lock if it was enabled
+                toggleKeepAwake();
             }
         } catch (err) {
             console.error('Error starting recording:', err);
@@ -1022,9 +990,8 @@ const MainApp: React.FC<{ user: User, onLogout: () => void }> = ({ user, onLogou
             mediaRecorderRef.current.stop();
             setIsRecording(false);
             if (wakeLockRef.current) {
-                toggleKeepAwake(); // Release wake lock
+                toggleKeepAwake();
             }
-            // Close PiP window
             if(pipWindowRef.current && !pipWindowRef.current.closed) {
                 pipWindowRef.current.close();
                 pipWindowRef.current = null;
@@ -1034,35 +1001,26 @@ const MainApp: React.FC<{ user: User, onLogout: () => void }> = ({ user, onLogou
     };
 
     const processAudio = async () => {
+        if (!user) return;
         if (recordingTimeRef.current < 2) {
             setErrorMessage(t('recordingTooShortError'));
             return;
         }
-
         setIsAnalyzing(true);
         setErrorMessage('');
-
         if (!navigator.onLine) {
             setErrorMessage(t('offlineError'));
             setIsAnalyzing(false);
             return;
         }
-
         try {
             const audioBlob = new Blob(audioChunksRef.current, { type: 'audio/webm' });
             const reader = new FileReader();
             reader.readAsDataURL(audioBlob);
             reader.onloadend = async () => {
                 const base64Audio = (reader.result as string).split(',')[1];
-                const audioPart = {
-                    inlineData: {
-                        mimeType: 'audio/webm',
-                        data: base64Audio
-                    },
-                };
-                const request = {
-                    contents: [{ parts: [audioPart, { text: t('analysisPrompt') }] }],
-                };
+                const audioPart = { inlineData: { mimeType: 'audio/webm', data: base64Audio } };
+                const request = { contents: [{ parts: [audioPart, { text: t('analysisPrompt') }] }] };
 
                 const response = await ai.models.generateContent({
                     model: 'gemini-2.5-flash',
@@ -1071,7 +1029,6 @@ const MainApp: React.FC<{ user: User, onLogout: () => void }> = ({ user, onLogou
 
                 const jsonString = response.text.trim();
                 const result = JSON.parse(jsonString);
-
                 const locationInfo = await getCurrentLocation();
 
                 const newSession: Session = {
@@ -1116,7 +1073,6 @@ const MainApp: React.FC<{ user: User, onLogout: () => void }> = ({ user, onLogou
                 async (position) => {
                     const { latitude, longitude } = position.coords;
                     try {
-                        // Using a free reverse geocoding service (Nominatim)
                         const response = await fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${latitude}&lon=${longitude}`);
                         const data = await response.json();
                         const location = data.display_name || `${latitude.toFixed(4)}, ${longitude.toFixed(4)}`;
@@ -1153,14 +1109,11 @@ const MainApp: React.FC<{ user: User, onLogout: () => void }> = ({ user, onLogou
         }
     };
 
-
     const handleRenameSpeaker = async (sessionId: string, speakerId: string, newName: string) => {
-        if (!newName.trim()) return;
-
+        if (!newName.trim() || !user) return;
         const sessionToUpdate = sessions.find(s => s.id === sessionId);
         if (sessionToUpdate) {
             const updatedSpeakers = { ...sessionToUpdate.speakers, [speakerId]: newName.trim() };
-            // To update transcript, we need to be careful to replace only whole words
             const oldName = sessionToUpdate.speakers[speakerId];
             const updatedTranscript = sessionToUpdate.results.transcript.replace(new RegExp(`\\b${oldName}\\b`, 'g'), newName.trim());
             const updatedSession = {
@@ -1184,7 +1137,7 @@ const MainApp: React.FC<{ user: User, onLogout: () => void }> = ({ user, onLogou
     );
 
     const renderView = () => {
-        if (activeSession) {
+        if (activeSession && user) {
             return (
                 <SessionDetail
                     session={activeSession}
@@ -1204,6 +1157,7 @@ const MainApp: React.FC<{ user: User, onLogout: () => void }> = ({ user, onLogou
                     sessions={filteredSessions}
                     onSelectSession={setActiveSession}
                     onDeleteSession={async (sessionId) => {
+                        if (!user) return;
                         await dbService.deleteSession(user.id, sessionId);
                         setSessions(sessions.filter(s => s.id !== sessionId));
                     }}
@@ -1213,7 +1167,7 @@ const MainApp: React.FC<{ user: User, onLogout: () => void }> = ({ user, onLogou
                 return <Recorder
                     isRecording={isRecording}
                     isAnalyzing={isAnalyzing}
-                    onStart={openAudioDeviceModal}
+                    onStart={handleStartRecordingRequest}
                     onStop={stopRecording}
                     errorMessage={errorMessage}
                     onTogglePiP={togglePiP}
@@ -1223,25 +1177,59 @@ const MainApp: React.FC<{ user: User, onLogout: () => void }> = ({ user, onLogou
                 />;
         }
     };
+
+    if (isLoading) {
+        return <div style={styles.app}><div style={{ margin: 'auto', color: '#888' }}>Loading...</div></div>;
+    }
+
+    const swipeOffset = (touchStartX && touchMoveX) ? touchMoveX - touchStartX : 0;
+    let constrainedOffset = swipeOffset;
+
+    // Add resistance when swiping beyond the boundaries
+    if ((activeTab === 'record' && swipeOffset > 0) || (activeTab === 'sessions' && swipeOffset < 0)) {
+        constrainedOffset = Math.tanh(swipeOffset / 300) * 100;
+    }
+
+    const isSwiping = touchStartX !== null;
+    const swipeableViewStyle: CSSProperties = {
+        height: '100%',
+        width: '100%',
+        flexShrink: 0,
+        transform: `translateX(${activeTab === 'record' ? constrainedOffset : `calc(-100% + ${constrainedOffset}px)`})`,
+        transition: isSwiping ? 'none' : 'transform 0.3s ease-out',
+        willChange: 'transform',
+    };
     
     return (
         <div style={styles.app}>
             <header style={styles.header}>
-                <a href="#" style={styles.logo} onClick={(e) => { e.preventDefault(); setActiveSession(null); setActiveTab('record'); }}>
-                    <img src="https://assets-global.website-files.com/6526ada137350b5030229339/6526b15a4606549340b6167c_II-logo-white-cropped.png" alt="Verbatim Logo" style={styles.logoImage} />
+                <a href="#" 
+                   style={{...styles.logo, ...(isLogoHovered && {transform: 'scale(1.05)'})}} 
+                   onClick={(e) => { e.preventDefault(); setActiveSession(null); setActiveTab('record'); }}
+                   onMouseEnter={() => setIsLogoHovered(true)}
+                   onMouseLeave={() => setIsLogoHovered(false)}
+                >
+                    <Logo style={styles.logoImage} />
                     <h1 style={styles.logoText}>{t('title')}</h1>
                 </a>
                 <div style={styles.userProfile}>
-                    {user.picture && <img src={user.picture} alt={user.name} style={styles.userImage} />}
-                    <span>{user.name}</span>
-                    <button style={styles.logoutButton} onClick={onLogout}>{t('logout')}</button>
-                    <button style={{ ...styles.logoutButton, padding: '8px' }} onClick={() => setFaqModalOpen(true)} title={t('faqLink')}>?
+                    {user ? (
+                        <>
+                            {user.picture && <img src={user.picture} alt={user.name} style={styles.userImage} />}
+                            <span>{user.name}</span>
+                            <button style={styles.logoutButton} onClick={handleLogout}>{t('logout')}</button>
+                        </>
+                    ) : (
+                        <button style={{...styles.button, padding: '10px 20px'}} onClick={() => setIsLoginModalOpen(true)}>
+                            {t('signIn')}
+                        </button>
+                    )}
+                    <button style={{ ...styles.logoutButton, padding: '8px', marginLeft: '8px' }} onClick={() => setFaqModalOpen(true)} title={t('faqLink')}>?
                     </button>
                 </div>
             </header>
 
             <main style={styles.mainContent}>
-                {/* Search and Tab Navigation */}
                 {!activeSession && (
                     <div style={{ marginBottom: '24px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '16px' }}>
                          <div style={{ flexGrow: 1, maxWidth: '400px' }}>
@@ -1259,7 +1247,7 @@ const MainApp: React.FC<{ user: User, onLogout: () => void }> = ({ user, onLogou
                              {(['record', 'sessions'] as ActiveTab[]).map(tab => (
                                 <button
                                     key={tab}
-                                    onClick={() => setActiveTab(tab)}
+                                    onClick={() => handleTabClick(tab)}
                                     style={{
                                         padding: '8px 16px',
                                         borderRadius: '20px',
@@ -1276,15 +1264,55 @@ const MainApp: React.FC<{ user: User, onLogout: () => void }> = ({ user, onLogou
                     </div>
                 )}
                 
-                {renderView()}
+                <div 
+                    style={{ flex: 1, display: 'flex', width: '200%' }}
+                    onTouchStart={!activeSession ? handleTouchStart : undefined}
+                    onTouchMove={!activeSession ? handleTouchMove : undefined}
+                    onTouchEnd={!activeSession ? handleTouchEnd : undefined}
+                >
+                    <div style={swipeableViewStyle}>
+                         {activeSession ? renderView() : <Recorder
+                            isRecording={isRecording}
+                            isAnalyzing={isAnalyzing}
+                            onStart={handleStartRecordingRequest}
+                            onStop={stopRecording}
+                            errorMessage={errorMessage}
+                            onTogglePiP={togglePiP}
+                            isPiP={isPiP}
+                            onToggleKeepAwake={toggleKeepAwake}
+                            keepScreenAwake={keepScreenAwake}
+                         />}
+                    </div>
+                    <div style={swipeableViewStyle}>
+                         {activeSession ? renderView() : <SessionsList
+                            sessions={filteredSessions}
+                            onSelectSession={setActiveSession}
+                            onDeleteSession={async (sessionId) => {
+                                if (!user) return;
+                                await dbService.deleteSession(user.id, sessionId);
+                                setSessions(sessions.filter(s => s.id !== sessionId));
+                            }}
+                         />}
+                    </div>
+                </div>
 
             </main>
             
             <footer style={styles.footer}>
                 <p>&copy; {new Date().getFullYear()} Verbatim. {t('footerText')}</p>
             </footer>
+            
+            {isLoginModalOpen && (
+                <LoginModal 
+                    onLogin={handleLoginSuccess} 
+                    onClose={() => {
+                        setIsLoginModalOpen(false);
+                        setPostLoginAction(null);
+                    }} 
+                />
+            )}
 
-            {actionModalData && (
+            {actionModalData && user && (
                 <ActionHandlerModal
                     modalData={actionModalData}
                     onClose={() => setActionModalData(null)}
@@ -1318,7 +1346,81 @@ const MainApp: React.FC<{ user: User, onLogout: () => void }> = ({ user, onLogou
 
         </div>
     );
-}
+};
+
+const LoginModal: React.FC<{ onLogin: (user: User) => void; onClose: () => void; }> = ({ onLogin, onClose }) => {
+    const googleButtonRef = useRef<HTMLDivElement>(null);
+    const [error, setError] = useState<string | null>(null);
+
+    const handleCredentialResponse = useCallback(async (response: any) => {
+        try {
+            const decoded: { sub: string, name: string, email: string, picture: string } = jwtDecode(response.credential);
+            const user: User = {
+                id: decoded.sub,
+                name: decoded.name,
+                email: decoded.email,
+                picture: decoded.picture,
+            };
+            onLogin(user);
+        } catch (error) {
+            console.error("Error decoding credential response:", error);
+            setError("Failed to process login. Please try again.");
+        }
+    }, [onLogin]);
+
+
+    useEffect(() => {
+        const FALLBACK_CLIENT_ID = "450870631577-ecddfl5qeb8rq3bdjhbjnlmckb4tksb6.apps.googleusercontent.com";
+        const clientId = process.env.GOOGLE_CLIENT_ID;
+        let effectiveClientId = clientId;
+
+        if (!clientId) {
+            console.warn(
+                "❗ Google Sign-In is using a fallback Client ID. For production, please set the 'GOOGLE_CLIENT_ID' secret in your project."
+            );
+            effectiveClientId = FALLBACK_CLIENT_ID;
+        }
+
+        const initializeGSI = () => {
+             if (window.google && googleButtonRef.current) {
+                try {
+                    window.google.accounts.id.initialize({
+                        client_id: effectiveClientId,
+                        callback: handleCredentialResponse,
+                    });
+                    window.google.accounts.id.renderButton(
+                        googleButtonRef.current,
+                        { theme: 'outline', size: 'large', text: 'continue_with', width: '300' }
+                    );
+                } catch (e) {
+                    console.error("Error initializing Google Sign-In:", e);
+                    setError("Failed to initialize Google Sign-In. Please check the console for details.");
+                }
+            } else {
+                 console.error("Google Identity Services script not loaded or button ref not ready.");
+                 setError("Could not connect to Google Sign-In service. Please check your internet connection and refresh the page.");
+            }
+        };
+
+        if (!window.google) {
+            const timeout = setTimeout(initializeGSI, 500);
+            return () => clearTimeout(timeout);
+        } else {
+            initializeGSI();
+        }
+
+    }, [handleCredentialResponse]);
+    
+    return (
+        <Modal title={t('loginTitle')} onClose={onClose}>
+            <div style={{ textAlign: 'center', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '16px' }}>
+                <p>{t('loginSubtitle')}</p>
+                <div ref={googleButtonRef}></div>
+                {error && <p style={{ color: '#ff4d4d' }}>{error}</p>}
+            </div>
+        </Modal>
+    );
+};
 
 // ... All other components (Recorder, SessionsList, etc.) go here ...
 const Recorder: React.FC<{
@@ -1344,6 +1446,7 @@ const Recorder: React.FC<{
             textAlign: 'center',
             flex: 1,
             gap: '24px',
+            height: '100%',
         },
         recordButton: {
             width: '150px',
@@ -1432,17 +1535,34 @@ const SessionsList: React.FC<{
     onDeleteSession: (sessionId: string) => void;
 }> = ({ sessions, onSelectSession, onDeleteSession }) => {
     
+    const listStyles: { [key: string]: CSSProperties } = {
+        container: {
+            display: 'flex',
+            flexDirection: 'column',
+            gap: '16px',
+            height: '100%',
+            overflowY: 'auto',
+        },
+        emptyState: {
+            textAlign: 'center',
+            color: '#888',
+            margin: 'auto',
+        }
+    }
+
     if (sessions.length === 0) {
         return (
-            <div style={{ textAlign: 'center', color: '#888', marginTop: '50px' }}>
-                <h2>{t('welcomeMessage')}</h2>
-                <p>{t('welcomeSubtext')}</p>
+            <div style={listStyles.container}>
+                <div style={listStyles.emptyState}>
+                    <h2>{t('welcomeMessage')}</h2>
+                    <p>{t('welcomeSubtext')}</p>
+                </div>
             </div>
         );
     }
     
     return (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+        <div style={listStyles.container}>
             {sessions.map(session => (
                 <SessionItem key={session.id} session={session} onSelect={onSelectSession} onDelete={onDeleteSession} />
             ))}

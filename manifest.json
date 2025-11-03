@@ -4,35 +4,9 @@
   "description": "An AI-powered meeting assistant that records audio and uses Gemini to generate a full transcript with speaker labels, a key summary, and actionable next steps.",
   "icons": [
     {
-      "src": "https://assets-global.website-files.com/6526ada137350b5030229339/6526b15a4606549340b6167c_II-logo-white-cropped.png",
-      "type": "image/png",
-      "sizes": "48x48"
-    },
-    {
-      "src": "https://assets-global.website-files.com/6526ada137350b5030229339/6526b15a4606549340b6167c_II-logo-white-cropped.png",
-      "type": "image/png",
-      "sizes": "72x72"
-    },
-    {
-      "src": "https://assets-global.website-files.com/6526ada137350b5030229339/6526b15a4606549340b6167c_II-logo-white-cropped.png",
-      "type": "image/png",
-      "sizes": "96x96"
-    },
-    {
-      "src": "https://assets-global.website-files.com/6526ada137350b5030229339/6526b15a4606549340b6167c_II-logo-white-cropped.png",
-      "type": "image/png",
-      "sizes": "144x144"
-    },
-    {
-      "src": "https://assets-global.website-files.com/6526ada137350b5030229339/6526b15a4606549340b6167c_II-logo-white-cropped.png",
-      "type": "image/png",
-      "sizes": "192x192",
-      "purpose": "any maskable"
-    },
-    {
-      "src": "https://assets-global.website-files.com/6526ada137350b5030229339/6526b15a4606549340b6167c_II-logo-white-cropped.png",
-      "type": "image/png",
-      "sizes": "512x512",
+      "src": "data:image/svg+xml,%3csvg width='64' height='64' viewBox='0 0 64 64' fill='none' xmlns='http://www.w3.org/2000/svg'%3e%3cdefs%3e%3clinearGradient id='v_grad' x1='0.5' y1='0' x2='0.5' y2='1'%3e%3cstop stop-color='%2300D9C8'/%3e%3cstop offset='1' stop-color='%2300A99D'/%3e%3c/linearGradient%3e%3c/defs%3e%3cpath d='M54 32C54 44.1503 44.1503 54 32 54C19.8497 54 10 44.1503 10 32C10 19.8497 19.8497 10 32 10C38.3995 10 44.2255 12.6106 48.4853 16.8704' stroke='url(%23v_grad)' stroke-width='8' stroke-linecap='round'/%3e%3cpath d='M22 32L32 42L52 22' stroke='white' stroke-width='8' stroke-linecap='round' stroke-linejoin='round'/%3e%3c/svg%3e",
+      "type": "image/svg+xml",
+      "sizes": "any",
       "purpose": "any maskable"
     }
   ],
