@@ -1,0 +1,161 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Verbatim</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;600;700&display=swap" rel="stylesheet">
+  
+  <!-- PWA Manifest -->
+  <link rel="manifest" href="/manifest.json">
+  
+  <!--
+    ICON STRATEGY for Maximum Compatibility:
+    - Primary SVG icon for modern browsers.
+  -->
+
+  <!-- Favicon: SVG for modern browsers. -->
+  <link rel="icon" href="/icon.svg" type="image/svg+xml">
+
+  <!-- Safari Pinned Tab Icon -->
+  <link rel="mask-icon" href="/icon.svg" color="#00DAC6">
+
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-title" content="Verbatim">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+
+  <!-- Open Graph / Social Media Meta Tags -->
+  <meta property="og:title" content="Verbatim: AI Meeting Assistant">
+  <meta property="og:description" content="Record meetings and let AI handle the notes. Verbatim generates transcripts, summaries, and action items, so you can focus on the conversation.">
+  <meta property="og:image" content="/screenshots/screenshot-1-record-dark.svg">
+  <meta property="og:url" content="/">
+  <meta property="og:type" content="website">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="Verbatim: AI Meeting Assistant">
+  <meta name="twitter:description" content="Record meetings and let AI handle the notes. Verbatim generates transcripts, summaries, and action items, so you can focus on the conversation.">
+  <meta name="twitter:image" content="/screenshots/screenshot-1-record-dark.svg">
+
+  <script>
+    (function() {
+      // Set theme before rendering to prevent flash of unstyled content.
+      const storedTheme = localStorage.getItem('verbatim_theme');
+      const theme = (storedTheme === 'light' || storedTheme === 'dark') 
+                    ? storedTheme 
+                    : (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
+      document.documentElement.setAttribute('data-theme', theme);
+      
+      const metaThemeColor = document.createElement('meta');
+      metaThemeColor.name = 'theme-color';
+      metaThemeColor.content = theme === 'dark' ? '#0D0D0D' : '#F5F5F7';
+      document.head.appendChild(metaThemeColor);
+    })();
+  </script>
+
+  <style>
+    :root {
+      font-synthesis: none;
+      text-rendering: optimizeLegibility;
+      -webkit-font-smoothing: antialiased;
+      -moz-osx-font-smoothing: grayscale;
+      -webkit-text-size-adjust: 100%;
+      font-family: 'Poppins', sans-serif;
+    }
+    
+    html[data-theme='dark'] {
+       --bg: #0D0D0D;
+       --bg-2: #1a1a1a;
+       --bg-3: #2a2a2a;
+       --bg-accent: #1f1f1f;
+       --text-primary: #E0E0E0;
+       --text-secondary: #aaa;
+       --text-tertiary: #888;
+       --border-color: #333;
+       --border-color-2: #444;
+       --accent-primary: #00DAC6;
+       --accent-primary-text: #0D0D0D;
+       --accent-secondary: #007AFF;
+       --accent-secondary-text: #FFFFFF;
+       --danger: #FF4136;
+       --danger-text: #E0E0E0;
+       --danger-border: #900;
+       --danger-bg: #500;
+       --danger-bg-light: #442222;
+       color-scheme: dark;
+    }
+
+    html[data-theme='light'] {
+       --bg: #F5F5F7;
+       --bg-2: #FFFFFF;
+       --bg-3: #E8E8ED;
+       --bg-accent: #FFFFFF;
+       --text-primary: #1D1D1F;
+       --text-secondary: #555;
+       --text-tertiary: #666;
+       --border-color: #D2D2D7;
+       --border-color-2: #C7C7CC;
+       --accent-primary: #00DAC6;
+       --accent-primary-text: #0D0D0D;
+       --accent-secondary: #007AFF;
+       --accent-secondary-text: #FFFFFF;
+       --danger: #D70015;
+       --danger-text: #D70015;
+       --danger-border: #D70015;
+       --danger-bg: #FFE5E5;
+       --danger-bg-light: #FFE5E5;
+       color-scheme: light;
+    }
+    
+    body {
+      margin: 0;
+      min-height: 100dvh;
+      background-color: var(--bg);
+      color: var(--text-primary);
+      transition: background-color 0.3s ease, color 0.3s ease;
+    }
+
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
+
+    #root:empty::before {
+      content: "";
+      display: block;
+      position: fixed;
+      left: 50%;
+      top: 50%;
+      width: 50px;
+      height: 50px;
+      margin: -25px 0 0 -25px;
+      border-radius: 50%;
+      background: conic-gradient(#00DAC6, #f9c74f, #f94144, #90be6d, #00DAC6);
+      -webkit-mask: radial-gradient(farthest-side, transparent calc(100% - 4px), #000 0);
+      mask: radial-gradient(farthest-side, transparent calc(100% - 4px), #000 0);
+      animation: spin 1s linear infinite;
+    }
+  </style>
+
+<script type="importmap">
+{
+  "imports": {
+    "react": "https://aistudiocdn.com/react@^18.2.0",
+    "react-dom/client": "https://aistudiocdn.com/react-dom@^18.2.0/client",
+    "firebase/compat/app": "https://aistudiocdn.com/firebase@^12.5.0/compat/app",
+    "firebase/compat/auth": "https://aistudiocdn.com/firebase@^12.5.0/compat/auth",
+    "firebase/compat/firestore": "https://aistudiocdn.com/firebase@^12.5.0/compat/firestore",
+    "firebase/compat/storage": "https://aistudiocdn.com/firebase@^12.5.0/compat/storage",
+    "firebase/compat/functions": "https://aistudiocdn.com/firebase@^12.5.0/compat/functions",
+    "firebase/compat/analytics": "https://aistudiocdn.com/firebase@^12.5.0/compat/analytics",
+    "@google/genai": "https://aistudiocdn.com/@google/genai@^1.28.0",
+    "marked": "https://aistudiocdn.com/marked@^16.4.1"
+  }
+}
+</script>
+</head>
+<body>
+  <noscript>You need to enable JavaScript to run this app.</noscript>
+  <div id="root"></div>
+  <script type="module" src="./index.tsx"></script>
+</body>
+</html>
